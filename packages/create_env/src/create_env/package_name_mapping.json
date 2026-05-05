@@ -1,0 +1,8 @@
+{
+  "PIL": "Pillow",
+  "bs4": "beautifulsoup4",
+  "cv2": "opencv-python",
+  "sklearn": "scikit-learn",
+  "yaml": "pyyaml"
+}
+

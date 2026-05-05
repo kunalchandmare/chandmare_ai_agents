@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "create_env"
+version = "0.0.1"
+description = "Scans Python source files and creates deterministic dependency manifests"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Chandmare, Kunal", email = "chandmare@example.com"}
+]
+keywords = ["dependency", "scanning", "environment", "manifests", "ast"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/chandmare/chandmare_ai_agents"
+Repository = "https://github.com/chandmare/chandmare_ai_agents"
+
+[project.scripts]
+create_env = "create_env.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["create_env*"]
+
+[tool.setuptools.package-data]
+create_env = ["package_name_mapping.json"]
+
