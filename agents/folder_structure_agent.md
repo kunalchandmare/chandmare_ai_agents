@@ -211,6 +211,10 @@ Allowed in root:
 - CI config
 - top-level folders such as `docs/`, `agents/`, `packages/`, `tests/`
 
+General prevention rule:
+- The repository **must** include a root-level `.gitignore` that covers generated/build artifacts across all packages (for example: `build/`, `dist/`, `*.egg-info/`, `.pytest_cache/`, `__pycache__/`, `*.pyc`, local venv folders).
+- Generated artifact folders are allowed only as temporary local outputs and must not be kept as project structure.
+
 Avoid keeping these in root long-term:
 - generated summaries
 - implementation reports
@@ -244,6 +248,7 @@ This agent should be able to:
 - explain why a file belongs in a certain place
 - keep the repository scalable as more agents and packages are added
 - **clean up garbage files at the end of project creation**
+- enforce and update root `.gitignore` rules so generated artifacts do not pollute future projects
 
 ## Cleanup and hygiene rules
 
@@ -296,6 +301,11 @@ Before declaring a project complete, verify:
    - Configuration files (`conftest.py`, `pytest.ini`)
    - `__pycache__/` folder (if present from test runs)
    - No garbage or stray files
+
+6. **Ignore policy** is present and effective:
+   - Root `.gitignore` exists
+   - Build/test/cache artifacts are ignored repository-wide (`build/`, `dist/`, `*.egg-info/`, `.pytest_cache/`, `__pycache__/`, `*.pyc`)
+   - Any generated artifact folders created during development are removed before completion unless explicitly needed
 
 ### Cleanup process
 
