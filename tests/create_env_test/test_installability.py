@@ -21,6 +21,7 @@ class TestCreateEnvInstallability(unittest.TestCase):
 
     def tearDown(self):
         remove_test_dir(self.temp_dir)
+        remove_test_dir(str(self.package_dir / 'build'))
 
     def _venv_python(self) -> Path:
         if sys.platform.startswith("win"):
@@ -72,3 +73,52 @@ class TestCreateEnvInstallability(unittest.TestCase):
         )
         self.assertEqual(import_check.returncode, 0, msg=import_check.stderr)
         self.assertEqual(import_check.stdout.strip(), self._expected_version())
+
+    def test_pip_install_with_extra_index_url_in_requirements(self):
+        create_venv = subprocess.run(
+            [sys.executable, '-m', 'venv', str(self.venv_dir)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(create_venv.returncode, 0, msg=create_venv.stderr)
+
+        venv_python = self._venv_python()
+        self.assertTrue(venv_python.exists(), msg=f'Missing venv interpreter at {venv_python}')
+
+        pip_version_result = subprocess.run(
+            [str(venv_python), '-m', 'pip', '--version'],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(pip_version_result.returncode, 0, msg=pip_version_result.stderr)
+        pip_version = pip_version_result.stdout.split()[1]
+
+        requirements_path = Path(self.temp_dir) / 'requirements.txt'
+        requirements_path.write_text(
+            '\n'.join([
+                '--index-url https://pypi.org/simple',
+                '--extra-index-url https://download.pytorch.org/whl/cu126',
+                f'pip=={pip_version}',
+                '',
+            ]),
+            encoding='utf-8',
+        )
+
+        install_result = subprocess.run(
+            [
+                str(venv_python),
+                '-m',
+                'pip',
+                'install',
+                '--disable-pip-version-check',
+                '-r',
+                str(requirements_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(install_result.returncode, 0, msg=install_result.stderr)
+

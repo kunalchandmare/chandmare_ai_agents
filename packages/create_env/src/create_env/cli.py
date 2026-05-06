@@ -49,6 +49,12 @@ class CreateEnvCLI:
             default=None,
             help='Resolve versions from a specific local conda environment'
         )
+        scan_parser.add_argument(
+            '--extra-index-url',
+            action='append',
+            default=[],
+            help='Additional package index URL (can be provided multiple times; PyPI stays default index)'
+        )
 
         return parser
 
@@ -56,6 +62,7 @@ class CreateEnvCLI:
         """Handle the local scan command."""
         project_path = Path(args.project_path)
         env_name = args.env_name
+        extra_index_urls = args.extra_index_url
 
         print(f"Scanning local directory: {project_path}")
         resolved_imports = self.scanner.scan_directory(str(project_path))
@@ -71,7 +78,11 @@ class CreateEnvCLI:
         generator.resolve_versions(env_name)
 
         print(f"Generating manifests in: {project_path}")
-        generator.generate_all_manifests(str(project_path), environment_name='create-env-generated')
+        generator.generate_all_manifests(
+            str(project_path),
+            environment_name='create-env-generated',
+            additional_index_urls=extra_index_urls,
+        )
 
         print('Done!')
         return 0

@@ -17,6 +17,7 @@ python -m create_env scan <project_path> --env-name <conda_env_name>
 
 - `<project_path>`: Local path to scan recursively (required)
 - `--env-name <conda_env_name>`: Resolve exact package versions from a specific local conda environment instead of the active Python environment
+- `--extra-index-url <url>`: Optional additional pip package index URL (repeatable). PyPI remains the default index.
 
 ## Scope
 
@@ -33,7 +34,7 @@ All scanning, resolution, file generation, and optional mapping updates happen l
 ## Guarantees
 
 - uses folder_structure_agent.md for maintaining folder structure , use agent_name = "create_env"
-- **Package must include both `pyproject.toml` and `setup.py`** for full installability. These files must be placed at the package root (`packages/create_env/`), not under `src/`. The `pyproject.toml` defines modern build metadata while `setup.py` ensures compatibility with legacy tools.
+- **Package must include `pyproject.toml`** for full installability. This file must be placed at the package root (`packages/create_env/`), not under `src/`. A `setup.py` is NOT required when `pyproject.toml` contains a complete `[build-system]` and `[project]` section. The `pyproject.toml` is the single source of truth for package metadata, build configuration, entry points, and package discovery.
 - **Package author in `setup.py` must match the agent author** (`Chandmare, Kunal`). This ensures consistent attribution across all package metadata and documentation.
 - Scans `.py` files recursively under the given local `<project_path>`.
 - Ignores Python standard library modules and local project imports.
@@ -49,6 +50,9 @@ All scanning, resolution, file generation, and optional mapping updates happen l
 - Resolves exact installed versions for used packages only.
 - Normalizes final package names before writing output manifests.
 - Can resolve versions from a specific local conda environment via `--env-name`.
+- Keeps PyPI as default package source and adds `--extra-index-url` entries only when needed or explicitly provided.
+- For torch CUDA/CPU wheel versions (for example `torch==2.9.0+cu126`), infers a compatible extra index URL using the detected suffix.
+- If multiple additional package websites are required, records an explicit warning in `dependency_warnings.txt` so users can choose split install commands for strict control.
 - Generates output files in the scanned `<project_path>`:
   - `requirements.txt`
   - `conda.yaml`
@@ -138,6 +142,18 @@ Contains:
 - ambiguous mappings
 - imports missing from the selected environment
 - imports skipped because they appear local or dynamic
+- warnings when multiple additional package index websites are required
+
+## Special use case: torch + cuda/cpu wheel indexes
+
+When resolved versions include torch-family packages with local version suffixes such as `+cu126` or `+cpu`, `create_env_agent`:
+
+1. keeps `https://pypi.org/simple` as the primary index
+2. adds inferred `--extra-index-url` entries for compatible wheel sources
+3. writes everything into the same `requirements.txt` (no extra requirements file)
+4. warns if more than one additional package website is required
+
+This behavior is deterministic and version-friendly because CUDA digits are parsed from the installed version suffix (for example `cu126`) instead of hardcoding one specific release.
 
 ## Validation rules
 
@@ -150,7 +166,7 @@ Any mapping loaded from packaged fallback JSON or local override JSON must be va
 
 ## Versioning
 
-- The package is installable and versioned starting from `0.0.1`
+- The package is installable and versioned starting from `1.0.0`
 - Mapping improvements in the packaged fallback JSON are released through normal package version updates
 - Local override mappings are not considered part of the package version
 

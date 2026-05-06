@@ -33,6 +33,7 @@ class TestCreateEnvCLI(unittest.TestCase):
         self.assertEqual(args.command, 'scan')
         self.assertEqual(args.project_path, '/path/to/project')
         self.assertIsNone(args.env_name)
+        self.assertEqual(args.extra_index_url, [])
 
     def test_parse_scan_command_with_env_name(self):
         parser = self.cli._create_parser()
@@ -41,6 +42,23 @@ class TestCreateEnvCLI(unittest.TestCase):
         self.assertEqual(args.command, 'scan')
         self.assertEqual(args.project_path, '/path/to/project')
         self.assertEqual(args.env_name, 'myenv')
+
+    def test_parse_scan_command_with_extra_index_urls(self):
+        parser = self.cli._create_parser()
+        args = parser.parse_args([
+            'scan',
+            '/path/to/project',
+            '--extra-index-url',
+            'https://download.pytorch.org/whl/cu126',
+            '--extra-index-url',
+            'https://example.com/simple',
+        ])
+
+        self.assertEqual(args.command, 'scan')
+        self.assertEqual(
+            args.extra_index_url,
+            ['https://download.pytorch.org/whl/cu126', 'https://example.com/simple']
+        )
 
     def test_run_with_no_command(self):
         with self.assertRaises(SystemExit) as cm:

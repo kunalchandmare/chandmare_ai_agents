@@ -71,4 +71,4 @@ Generated in the scanned `<project_path>`:
 
 ## Version
 
-0.0.1 (Alpha)
+1.0.0 (Stable)
