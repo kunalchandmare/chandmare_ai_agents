@@ -27,17 +27,54 @@ pip install -e /path/to/packages/create_env
 
 ## Usage
 
-### Scan local project
+### Command
+
+```bash
+python -m create_env scan <project_path> [OPTIONS]
+```
+
+### Arguments
+
+| Argument | Description |
+|---|---|
+| `project_path` | Local path to scan recursively (required) |
+
+### Options
+
+| Option | Description |
+|---|---|
+| `--env-name <name>` | Resolve versions from a specific local conda environment instead of the active one |
+| `--extra-index-url <url>` | Additional pip package index URL. PyPI remains the default index. Can be provided multiple times. |
+
+### Examples
+
+#### Scan local project
 
 ```bash
 python -m create_env scan /path/to/project
 ```
 
-### Scan with specific local conda environment
+#### Scan with a specific conda environment
 
 ```bash
 python -m create_env scan /path/to/project --env-name myenv
 ```
+
+#### Scan with a custom extra package index (e.g. PyTorch CUDA wheels)
+
+```bash
+python -m create_env scan /path/to/project --extra-index-url https://download.pytorch.org/whl/cu126
+```
+
+#### Scan with multiple extra indexes
+
+```bash
+python -m create_env scan /path/to/project \
+  --extra-index-url https://download.pytorch.org/whl/cu126 \
+  --extra-index-url https://my-private-index.example.com/simple
+```
+
+> **Note:** When multiple additional package index websites are detected, a warning is written to `dependency_warnings.txt` recommending split install commands for strict package source control.
 
 ## Mapping files
 
