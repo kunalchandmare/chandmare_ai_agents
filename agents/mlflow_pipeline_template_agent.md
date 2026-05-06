@@ -1,0 +1,960 @@
+# mlflow_pipeline_template_agent
+
+**Author:** Chandmare, Kunal  
+**Model:** Claude Opus 4  
+**Created:** 2026-05-06
+
+`mlflow_pipeline_template_agent` generates a fully structured MLflow + Hydra pipeline project skeleton from a Copier template. Supports pluggable artifact backends: MLflow Artifacts (default), DVC, or Weights & Biases. The user declares project name, pipeline steps, reusable components, and artifact backend. The agent scaffolds everything so the user only needs to implement core business logic.
+
+---
+
+## Command
+
+```bash
+# Generate a new project interactively
+copier copy path/to/mlflow-pipeline-template path/to/new-project
+
+# Generate non-interactively — MLflow Artifacts (default)
+copier copy path/to/mlflow-pipeline-template path/to/new-project \
+  --data project_name=my_project \
+  --data pipeline_steps="ingest,clean,train,evaluate" \
+  --data reusable_components="download_data,train_val_test_split,test_model"
+
+# Generate with DVC artifact backend
+copier copy path/to/mlflow-pipeline-template path/to/new-project \
+  --data project_name=my_project \
+  --data artifact_backend=dvc \
+  --data dvc_remote="s3://my-bucket/artifacts" \
+  --data pipeline_steps="ingest,clean,train,evaluate" \
+  --data reusable_components="download_data,train_val_test_split,test_model"
+
+# Generate with W&B artifact backend
+copier copy path/to/mlflow-pipeline-template path/to/new-project \
+  --data project_name=my_project \
+  --data artifact_backend=wandb \
+  --data wandb_entity=myteam \
+  --data wandb_project=my_project \
+  --data pipeline_steps="ingest,clean,train,evaluate" \
+  --data reusable_components="download_data,train_val_test_split,test_model"
+
+# Update an existing generated project when the template evolves
+copier update path/to/existing-project
+```
+
+---
+
+## Scope
+
+This agent is responsible for:
+- Generating the full project skeleton from the Copier template
+- Running the post-generation `generate_steps.py` script that creates per-step folders under `src/`
+- Running the post-generation `generate_components.py` script that creates per-component folders under `components/`
+- Producing the `AGENTS.md` file in the generated project root that tells downstream agents (including `create_env_agent`) how to operate on the project
+- Conditionally including DVC or W&B integration based on `artifact_backend` choice
+
+It does **not**:
+- Implement business logic inside step `run.py` files (user's responsibility)
+- Generate `conda.yml` or any environment files — `create_env_agent` is invoked as the **final post-generation task** to scan the scaffolded project and produce all `conda.yml` files automatically
+- Push generated projects to remote repositories
+- Create conda environments automatically
+
+---
+
+## Architecture: components/ vs src/
+
+The generated project maintains a strict two-level pipeline architecture. Understanding the distinction is critical for structuring any new project.
+
+### `components/` — Reusable, Domain-Agnostic Pipeline Blocks
+
+| Property | Detail |
+|---|---|
+| **Purpose** | Generic building blocks that can be shared across multiple ML projects |
+| **Examples** | `download_data`, `train_val_test_split`, `test_model`, `upload_artifact` |
+| **Coupling** | Low — no business logic, no schema knowledge |
+| **Shared utilities** | `components/shared/` contains artifact utilities (MLflow, DVC, or W&B depending on `artifact_backend`) |
+| **MLflow invocation** | Referenced via local path but designed to be extractable to a remote GitHub repo later |
+| **`setup.py` / `pyproject.toml`** | `components/` is a Python package — `shared/` is installable as `pipeline-shared-utils` |
+| **When to use** | Step can be reused without modification across different projects |
+
+### `src/` — Project-Specific Pipeline Steps
+
+| Property | Detail |
+|---|---|
+| **Purpose** | Custom steps containing the actual domain logic of this project |
+| **Examples** | `basic_cleaning` (domain-specific filters), `feature_engineering`, `train_xgboost` |
+| **Coupling** | High — knows the data schema, business rules, model architecture |
+| **Imports** | Imports from `components/shared/` for artifact utilities |
+| **When to use** | Step contains logic that will not be reused elsewhere verbatim |
+
+### Rule of thumb
+
+> If a step only moves/splits/tests artifacts without knowing what is inside them → put it in `components/`.  
+> If a step needs to know column names, data types, or model hyperparameters → put it in `src/`.
+
+---
+
+## Generated Project Structure
+
+### Default (MLflow Artifacts, `artifact_backend=mlflow`)
+
+```text
+<project_name>/
+├── AGENTS.md                        ← rules for all AI agents working on this project
+├── main.py                          ← Hydra-orchestrated pipeline runner
+├── MLproject                        ← root MLflow entry point
+├── config.yaml                      ← Hydra config (one section per step)
+├── conda.yml                        ← generated by create_env_agent (post-scaffolding)
+│
+├── components/                      ← reusable, domain-agnostic blocks
+│   ├── shared/                      ← shared Python utilities (installable package)
+│   │   ├── pyproject.toml
+│   │   └── artifact_utils/
+│   │       ├── __init__.py
+│   │       ├── mlflow_artifacts.py  ← MLflow-native artifact log/download helpers
+│   │       └── file_utils.py        ← read_one_csv_to_df, empty_dir
+│   │
+│   └── <component_name>/            ← one folder per reusable component
+│       ├── conda.yml                ← generated by create_env_agent
+│       ├── MLproject
+│       └── run.py                   ← skeleton with TODO markers
+│
+└── src/                             ← project-specific steps
+    └── <step_name>/                 ← one folder per pipeline step
+        ├── conda.yml                ← generated by create_env_agent
+        ├── MLproject
+        └── run.py                   ← skeleton with TODO markers
+```
+
+### With DVC (`artifact_backend=dvc`)
+
+```text
+<project_name>/
+├── ...                              ← same as above
+├── .dvc/                            ← DVC config directory
+│   └── config                       ← remote storage configuration
+├── components/
+│   ├── shared/
+│   │   ├── pyproject.toml
+│   │   └── artifact_utils/
+│   │       ├── __init__.py
+│   │       ├── dvc_artifacts.py     ← DVC push/pull/track helpers
+│   │       ├── mlflow_artifacts.py  ← MLflow-native helpers (still available for metrics)
+│   │       └── file_utils.py        ← read_one_csv_to_df, empty_dir
+│   ...
+```
+
+### With W&B (`artifact_backend=wandb`)
+
+```text
+<project_name>/
+├── ...                              ← same as above
+├── components/
+│   ├── shared/
+│   │   ├── pyproject.toml
+│   │   └── artifact_utils/
+│   │       ├── __init__.py
+│   │       ├── wandb_artifacts.py   ← safe_artifact_download, log_artifact (W&B)
+│   │       ├── mlflow_artifacts.py  ← MLflow-native helpers (still available)
+│   │       └── file_utils.py        ← read_one_csv_to_df, empty_dir
+│   ...
+```
+
+---
+
+## Copier Template Structure
+
+```text
+mlflow-pipeline-template/
+├── copier.yml                       ← all prompts and post-generation tasks
+├── generate_steps.py                ← post-copy script: creates src/<step>/ folders
+├── generate_components.py           ← post-copy script: creates components/<comp>/ folders
+└── template/
+    ├── AGENTS.md.jinja
+    ├── main.py.jinja
+    ├── MLproject.jinja
+    ├── config.yaml.jinja
+    ├── components/
+    │   └── shared/
+    │       ├── pyproject.toml.jinja
+    │       └── artifact_utils/
+    │           ├── __init__.py.jinja
+    │           ├── mlflow_artifacts.py
+    │           ├── dvc_artifacts.py      ← only included when artifact_backend=dvc
+    │           ├── file_utils.py
+    │           └── wandb_artifacts.py    ← only included when artifact_backend=wandb
+    └── _blueprints/
+        ├── step/
+        │   ├── run.py.jinja             ← MLflow variant (default)
+        │   ├── run_dvc.py.jinja         ← DVC variant
+        │   ├── run_wandb.py.jinja       ← W&B variant
+        │   └── MLproject.jinja
+        └── component/
+            ├── run.py.jinja
+            ├── run_dvc.py.jinja
+            ├── run_wandb.py.jinja
+            └── MLproject.jinja
+```
+
+---
+
+## copier.yml Specification
+
+```yaml
+# copier.yml
+project_name:
+  type: str
+  help: "Project name (used as the MLflow project name)"
+
+project_slug:
+  type: str
+  default: "{{ project_name | lower | replace(' ', '_') }}"
+  help: "Python-safe project slug (auto-derived, override if needed)"
+
+artifact_backend:
+  type: str
+  default: "mlflow"
+  choices:
+    mlflow: "MLflow Artifacts (built-in, zero setup)"
+    dvc: "DVC (git-like data versioning, best for large datasets)"
+    wandb: "Weights & Biases (requires account)"
+  help: "Artifact versioning backend"
+
+wandb_entity:
+  type: str
+  default: ""
+  help: "Weights & Biases entity (your username or team name)"
+  when: "{{ artifact_backend == 'wandb' }}"
+
+wandb_project:
+  type: str
+  default: "{{ project_name | lower | replace(' ', '_') }}"
+  help: "Weights & Biases project name"
+  when: "{{ artifact_backend == 'wandb' }}"
+
+wandb_version:
+  type: str
+  default: "0.17.0"
+  help: "Weights & Biases version"
+  when: "{{ artifact_backend == 'wandb' }}"
+
+dvc_remote:
+  type: str
+  default: ""
+  help: "DVC remote storage URL (e.g. s3://bucket/path, gdrive://id, /local/path). Leave empty to configure later."
+  when: "{{ artifact_backend == 'dvc' }}"
+
+
+mlflow_version:
+  type: str
+  default: "2.14.1"
+  help: "MLflow version"
+
+pipeline_steps:
+  type: str
+  default: "ingest,clean,train,evaluate"
+  help: "Comma-separated list of project-specific pipeline steps (will be created under src/)"
+
+reusable_components:
+  type: str
+  default: "download_data,train_val_test_split,test_model"
+  help: "Comma-separated list of reusable component names (will be created under components/)"
+
+_tasks:
+  - "python generate_steps.py {{ _copier_conf.dst_path }} {{ pipeline_steps }}"
+  - "python generate_components.py {{ _copier_conf.dst_path }} {{ reusable_components }}"
+  - "python -m create_env scan {{ _copier_conf.dst_path }}"
+```
+
+---
+
+## Template File Specifications
+
+### `template/main.py.jinja`
+
+```python
+"""
+Pipeline orchestrator for {{ project_name }}.
+Driven by Hydra config (config.yaml). Run with:
+
+    mlflow run . -P steps=all
+    mlflow run . -P steps=ingest,clean
+    mlflow run . -P hydra_options="etl.min_price=10"
+"""
+import os
+import mlflow
+import hydra
+from omegaconf import DictConfig
+{% if artifact_backend == 'wandb' %}
+import wandb
+{% endif %}
+
+# Pipeline steps in execution order — edit this list to reorder steps
+_steps = [
+{%- for step in pipeline_steps.split(',') %}
+    "{{ step.strip() }}",
+{%- endfor %}
+]
+
+@hydra.main(version_base=None, config_name="config", config_path=".")
+def go(config: DictConfig):
+{% if artifact_backend == 'wandb' %}
+    os.environ["WANDB_PROJECT"] = config["main"]["project_name"]
+    os.environ["WANDB_RUN_GROUP"] = config["main"]["experiment_name"]
+{% endif %}
+
+    steps_par = config["main"]["steps"]
+    active_steps = steps_par.split(",") if steps_par != "all" else _steps
+
+{%- for step in pipeline_steps.split(',') %}
+{% set s = step.strip() %}
+    if "{{ s }}" in active_steps:
+        mlflow.run(
+            os.path.join(hydra.utils.get_original_cwd(), "src", "{{ s }}"),
+            "main",
+            env_manager="local",
+            parameters={
+                # TODO: map config keys to step parameters
+                # "input_artifact": config["{{ s }}"]["input_artifact"],
+            },
+        )
+{% endfor %}
+
+{%- for comp in reusable_components.split(',') %}
+{% set c = comp.strip() %}
+    if "{{ c }}" in active_steps:
+        mlflow.run(
+            os.path.join(hydra.utils.get_original_cwd(), "components", "{{ c }}"),
+            "main",
+            env_manager="local",
+            parameters={
+                # TODO: map config keys to component parameters
+            },
+        )
+{% endfor %}
+
+if __name__ == "__main__":
+    go()
+```
+
+### `template/MLproject.jinja`
+
+```yaml
+name: {{ project_slug }}
+conda_env: conda.yml
+
+entry_points:
+  main:
+    parameters:
+      steps:
+        description: "Comma-separated list of steps to execute, or 'all'"
+        type: str
+        default: all
+      hydra_options:
+        description: "Hydra overrides, e.g. etl.min_price=5"
+        type: str
+        default: ""
+    command: "python main.py main.steps={steps} {hydra_options}"
+```
+
+### `template/config.yaml.jinja`
+
+```yaml
+main:
+  project_name: {{ project_slug }}
+  experiment_name: development
+  steps: all
+{% if artifact_backend == 'wandb' %}
+  wandb_entity: {{ wandb_entity }}
+  wandb_project: {{ wandb_project }}
+{% endif %}
+
+{% for step in pipeline_steps.split(',') %}
+{{ step.strip() }}:
+  # TODO: add configuration keys for the {{ step.strip() }} step
+  input_artifact: ""
+  output_artifact: ""
+{% endfor %}
+{% for comp in reusable_components.split(',') %}
+{{ comp.strip() }}:
+  # TODO: add configuration keys for the {{ comp.strip() }} component
+  input_artifact: ""
+  output_artifact: ""
+{% endfor %}
+```
+
+
+### `template/_blueprints/step/run.py.jinja` (default — pure MLflow)
+
+```python
+#!/usr/bin/env python
+"""
+Pipeline step: {{ step_name }}
+
+Implement core logic in the go() function.
+Artifact utilities are provided by components/shared/artifact_utils.
+"""
+import argparse
+import logging
+import sys
+import os
+
+import mlflow
+
+# Make shared utilities importable when run via MLflow from project root
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from components.shared.artifact_utils.mlflow_artifacts import (
+    log_artifact_file,
+    download_artifact,
+)
+from components.shared.artifact_utils.file_utils import (
+    read_one_csv_to_df,
+    empty_dir,
+)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)-15s %(message)s")
+logger = logging.getLogger()
+
+
+def go(args):
+    with mlflow.start_run() as run:
+        # --- Download input artifact ---
+        # artifact_dir = download_artifact(args.input_artifact)
+
+        # TODO: load your data
+        # df = read_one_csv_to_df(artifact_dir)
+
+        # TODO: implement step logic here
+
+        # --- Upload output artifact ---
+        # log_artifact_file("<path_to_output_file>")
+
+        pass
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="{{ step_name }} pipeline step")
+
+    parser.add_argument("--input_artifact", type=str, required=True,
+                        help="MLflow artifact URI or local path")
+    parser.add_argument("--output_artifact", type=str, required=True,
+                        help="Name for the output artifact")
+    parser.add_argument("--output_type", type=str, required=True,
+                        help="Type tag for the output artifact")
+    parser.add_argument("--output_description", type=str, required=True,
+                        help="Description for the output artifact")
+    # TODO: add step-specific arguments here
+
+    args = parser.parse_args()
+    go(args)
+```
+
+### `template/_blueprints/step/run_wandb.py.jinja` (W&B variant — used when `artifact_backend=wandb`)
+
+```python
+#!/usr/bin/env python
+"""
+Pipeline step: {{ step_name }}
+
+Implement core logic in the go() function.
+Artifact utilities are provided by components/shared/artifact_utils.
+"""
+import argparse
+import logging
+import sys
+import os
+
+import wandb
+
+# Make shared utilities importable when run via MLflow from project root
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from components.shared.artifact_utils.wandb_artifacts import (
+    safe_artifact_download,
+    log_artifact,
+)
+from components.shared.artifact_utils.file_utils import (
+    read_one_csv_to_df,
+    empty_dir,
+)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)-15s %(message)s")
+logger = logging.getLogger()
+
+
+def go(args):
+    run = wandb.init(job_type="{{ step_name }}")
+    run.config.update(args)
+
+    # --- Download input artifact ---
+    artifact = run.use_artifact(args.input_artifact)
+    artifact_dir = safe_artifact_download(artifact)
+
+    # TODO: load your data
+    # df = read_one_csv_to_df(artifact_dir)
+
+    # TODO: implement step logic here
+
+    # --- Upload output artifact ---
+    # log_artifact(
+    #     args.output_artifact,
+    #     args.output_type,
+    #     args.output_description,
+    #     "<path_to_output_file>",
+    #     run,
+    # )
+
+    # --- Cleanup local artifact cache ---
+    empty_dir(artifact_dir.parent)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="{{ step_name }} pipeline step")
+
+    parser.add_argument("--input_artifact", type=str, required=True,
+                        help="W&B artifact name:version to use as input")
+    parser.add_argument("--output_artifact", type=str, required=True,
+                        help="Name for the output W&B artifact")
+    parser.add_argument("--output_type", type=str, required=True,
+                        help="Type tag for the output artifact")
+    parser.add_argument("--output_description", type=str, required=True,
+                        help="Description for the output artifact")
+    # TODO: add step-specific arguments here
+
+    args = parser.parse_args()
+    go(args)
+```
+
+### `template/_blueprints/step/MLproject.jinja`
+
+```yaml
+name: {{ step_name }}
+conda_env: conda.yml
+
+entry_points:
+  main:
+    parameters:
+      input_artifact:
+        description: "Input artifact (URI or name:version)"
+        type: string
+      output_artifact:
+        description: "Output artifact name"
+        type: string
+      output_type:
+        description: "Output artifact type"
+        type: string
+      output_description:
+        description: "Output artifact description"
+        type: string
+      # TODO: add step-specific parameters here
+
+    command: >-
+      python run.py
+        --input_artifact {input_artifact}
+        --output_artifact {output_artifact}
+        --output_type {output_type}
+        --output_description {output_description}
+```
+
+> **Note:** `component` blueprints (`_blueprints/component/`) follow identical structure. The `generate_steps.py` script selects `run.py.jinja`, `run_dvc.py.jinja`, or `run_wandb.py.jinja` based on the `artifact_backend` value in `.copier-answers.yml`. No `conda.yml` templates are included — `create_env_agent` generates all environment files by scanning the scaffolded code as the final post-generation task.
+
+---
+
+## Shared Utility Specifications
+
+### `template/components/shared/artifact_utils/__init__.py.jinja`
+
+```python
+"""
+Shared artifact utilities for the pipeline.
+Backend: {% if artifact_backend == 'wandb' %}Weights & Biases{% elif artifact_backend == 'dvc' %}DVC{% else %}MLflow{% endif %}
+"""
+{% if artifact_backend == 'wandb' %}
+from .wandb_artifacts import safe_artifact_download, log_artifact
+{% elif artifact_backend == 'dvc' %}
+from .dvc_artifacts import track_artifact, pull_artifact, push_artifact
+{% else %}
+from .mlflow_artifacts import log_artifact_file, download_artifact
+{% endif %}
+from .file_utils import read_one_csv_to_df, empty_dir
+```
+
+### `template/components/shared/artifact_utils/mlflow_artifacts.py`
+
+```python
+"""
+MLflow-native artifact helpers.
+Used as default when W&B is not enabled.
+"""
+import mlflow
+from pathlib import Path
+
+
+def log_artifact_file(local_path: str, artifact_path: str = None) -> None:
+    """Log a local file as an MLflow artifact in the active run."""
+    mlflow.log_artifact(local_path, artifact_path)
+
+
+def download_artifact(artifact_uri: str, dst_path: str = None) -> Path:
+    """
+    Download an MLflow artifact by URI.
+    Returns the local path to the downloaded artifact.
+    """
+    local = mlflow.artifacts.download_artifacts(
+        artifact_uri=artifact_uri, dst_path=dst_path
+    )
+    return Path(local).resolve()
+```
+
+### `template/components/shared/artifact_utils/dvc_artifacts.py` (only included when `artifact_backend=dvc`)
+
+```python
+"""
+DVC artifact helpers.
+Git-like versioning for data files and model artifacts.
+"""
+import subprocess
+from pathlib import Path
+
+
+def track_artifact(local_path: str) -> Path:
+    """
+    Add a file or directory to DVC tracking.
+    Creates a .dvc file and adds the original to .gitignore.
+    """
+    path = Path(local_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Cannot track: {local_path} does not exist")
+    subprocess.run(["dvc", "add", str(path)], check=True)
+    return path.with_suffix(path.suffix + ".dvc")
+
+
+def push_artifact(local_path: str = None) -> None:
+    """
+    Push tracked artifacts to the configured DVC remote.
+    If local_path is given, pushes only that .dvc file's data.
+    """
+    cmd = ["dvc", "push"]
+    if local_path:
+        dvc_file = str(Path(local_path).with_suffix(Path(local_path).suffix + ".dvc"))
+        cmd.append(dvc_file)
+    subprocess.run(cmd, check=True)
+
+
+def pull_artifact(local_path: str = None) -> Path:
+    """
+    Pull artifacts from DVC remote.
+    If local_path is given, pulls only that specific artifact.
+    """
+    cmd = ["dvc", "pull"]
+    if local_path:
+        dvc_file = str(Path(local_path).with_suffix(Path(local_path).suffix + ".dvc"))
+        cmd.append(dvc_file)
+    subprocess.run(cmd, check=True)
+    if local_path:
+        return Path(local_path).resolve()
+    return Path.cwd()
+```
+
+### `template/components/shared/artifact_utils/file_utils.py`
+
+```python
+"""
+File utility helpers — backend-agnostic.
+"""
+import shutil
+from pathlib import Path
+
+
+def read_one_csv_to_df(artifact_dir: Path):
+    """
+    Read the single CSV file from a directory into a DataFrame.
+    Raises RuntimeError if there is not exactly one CSV file.
+    """
+    import pandas as pd
+
+    csv_files = list(Path(artifact_dir).glob("*.csv"))
+    if len(csv_files) != 1:
+        raise RuntimeError(
+            f"Expected exactly 1 CSV in {artifact_dir}, found {len(csv_files)}: {csv_files}"
+        )
+    return pd.read_csv(csv_files[0])
+
+
+def empty_dir(dir_path: Path) -> None:
+    """Remove all contents of a directory without deleting the directory itself."""
+    for child in Path(dir_path).iterdir():
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+```
+
+### `template/components/shared/artifact_utils/wandb_artifacts.py` (only included when `artifact_backend=wandb`)
+
+```python
+"""
+Weights & Biases artifact helpers.
+Windows-safe: avoids colons in file paths.
+Only present in projects generated with artifact_backend=wandb.
+"""
+import shutil
+from pathlib import Path
+
+import wandb
+
+
+def safe_artifact_download(artifact: wandb.Artifact, safe_root: str = "safe_artifacts") -> Path:
+    """
+    Download a W&B artifact to a Windows-safe local path (no colons).
+    Returns the absolute path to the downloaded artifact directory.
+    """
+    if not isinstance(artifact, wandb.Artifact):
+        raise ValueError("artifact must be a wandb.Artifact instance")
+
+    safe_name = artifact.name.replace(":", "_") if artifact.name else "unnamed_artifact"
+    target_dir = Path.cwd() / safe_root / safe_name
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    downloaded = artifact.download(root=str(target_dir))
+    return Path(downloaded).resolve()
+
+
+def log_artifact(
+    artifact_name: str,
+    artifact_type: str,
+    artifact_description: str,
+    local_path: str,
+    run: wandb.sdk.wandb_run.Run,
+) -> None:
+    """Create a W&B artifact from a local file and log it to the active run."""
+    artifact = wandb.Artifact(
+        artifact_name,
+        type=artifact_type,
+        description=artifact_description,
+    )
+    artifact.add_file(local_path)
+    run.log_artifact(artifact)
+    artifact.wait()
+```
+
+---
+
+## `generate_steps.py` Specification
+
+```python
+#!/usr/bin/env python
+"""
+generate_steps.py — called by Copier _tasks after main template copy.
+Also callable manually to add a new step to an existing project:
+
+    python generate_steps.py . new_step_name
+"""
+import sys
+from pathlib import Path
+from jinja2 import Environment, FileSystemLoader
+import yaml
+
+
+def render_step(blueprint_dir: Path, output_dir: Path, step_name: str, context: dict):
+    output_dir.mkdir(parents=True, exist_ok=True)
+    env = Environment(loader=FileSystemLoader(str(blueprint_dir)), keep_trailing_newline=True)
+    ctx = {**context, "step_name": step_name}
+
+    # Choose run.py template based on artifact_backend
+    backend = ctx.get("artifact_backend", "mlflow")
+    run_templates = {
+        "mlflow": "run.py.jinja",
+        "dvc": "run_dvc.py.jinja",
+        "wandb": "run_wandb.py.jinja",
+    }
+    active_template = run_templates.get(backend, "run.py.jinja")
+
+    for tmpl_path in blueprint_dir.iterdir():
+        if tmpl_path.suffix != ".jinja":
+            continue
+        # Skip run variants not in use
+        if tmpl_path.name in run_templates.values() and tmpl_path.name != active_template:
+            continue
+
+        out_name = tmpl_path.stem  # strip .jinja
+        # All run variants produce "run.py"
+        if tmpl_path.name in run_templates.values():
+            out_name = "run.py"
+
+        rendered = env.get_template(tmpl_path.name).render(ctx)
+        (output_dir / out_name).write_text(rendered, encoding="utf-8")
+
+
+if __name__ == "__main__":
+    project_root = Path(sys.argv[1])
+    steps_arg = sys.argv[2] if len(sys.argv) > 2 else ""
+
+    # Read answers written by Copier
+    answers_file = project_root / ".copier-answers.yml"
+    answers = yaml.safe_load(answers_file.read_text(encoding="utf-8")) if answers_file.exists() else {}
+
+    context = {
+        "wandb_version": answers.get("wandb_version", "0.17.0"),
+        "mlflow_version": answers.get("mlflow_version", "2.14.1"),
+        "artifact_backend": answers.get("artifact_backend", "mlflow"),
+    }
+
+    blueprint_dir = project_root / "_blueprints" / "step"
+    step_names = [s.strip() for s in steps_arg.split(",") if s.strip()]
+
+    for step in step_names:
+        out = project_root / "src" / step
+        if out.exists():
+            print(f"[generate_steps] SKIP {step} — already exists")
+            continue
+        render_step(blueprint_dir, out, step, context)
+        print(f"[generate_steps] Created src/{step}/")
+```
+
+> `generate_components.py` is identical, with `component` blueprint dir and `components/` output path.
+
+---
+
+## `template/AGENTS.md.jinja`
+
+```markdown
+# AGENTS.md — {{ project_name }}
+
+This file describes how AI coding agents should operate inside this project.
+All agents must read this file before performing any task.
+
+---
+
+## Project structure rules
+
+- `main.py` — pipeline orchestrator. Edit to add/remove steps from `_steps` list and add `mlflow.run()` calls.
+- `config.yaml` — Hydra configuration. Add a top-level section per step with all parameters.
+- `src/<step_name>/run.py` — project-specific step logic. Only implement logic here.
+- `components/<comp_name>/run.py` — reusable component logic. Prefer generic, schema-agnostic code.
+- `components/shared/artifact_utils/` — shared utilities. **Never copy these into individual step files.**
+- `conda.yml` (root and per-step) — DO NOT edit manually. Use `create_env_agent` to regenerate.
+
+## Artifact backend
+
+{% if artifact_backend == 'wandb' %}
+This project uses **Weights & Biases** for artifact tracking.
+- Entity: `{{ wandb_entity }}`
+- Project: `{{ wandb_project }}`
+- Always use `safe_artifact_download()` from `components/shared/artifact_utils/wandb_artifacts.py`
+- Never use `artifact.download()` directly (breaks on Windows due to `:` in paths)
+{% elif artifact_backend == 'dvc' %}
+This project uses **DVC** for artifact versioning.
+- Use `track_artifact()`, `push_artifact()`, `pull_artifact()` from `components/shared/artifact_utils/dvc_artifacts.py`
+- Run `dvc push` after generating new artifacts
+- Run `dvc pull` to fetch artifacts tracked by teammates
+- Large data files are tracked via `.dvc` files committed to git
+{% else %}
+This project uses **MLflow's built-in artifact tracking** (no extra dependencies).
+- Use `mlflow.log_artifact()` or `log_artifact_file()` from `components/shared/artifact_utils/mlflow_artifacts.py`
+- Use `download_artifact()` to retrieve artifacts by URI
+{% endif %}
+
+## Agents active in this project
+
+### create_env_agent
+- Scans `.py` files and regenerates `conda.yml` files
+- Run after adding any new `import` to any step
+- Command: `python -m create_env scan <step_path> --env-name {{ project_slug }}_dev`
+- Run at root level to regenerate the root `conda.yml`
+
+### mlflow_pipeline_template_agent
+- Use to add new steps: `python generate_steps.py . <new_step_name>`
+- Use to add new components: `python generate_components.py . <new_component_name>`
+- After generating, implement logic in the new `run.py` and update `main.py` + `config.yaml`
+
+## Adding a new pipeline step
+
+1. Run: `python generate_steps.py . <step_name>`
+2. Implement logic in `src/<step_name>/run.py`
+3. Add parameters to `src/<step_name>/MLproject`
+4. Add a config section in `config.yaml`
+5. Add `mlflow.run(...)` call in `main.py`
+6. Run `create_env_agent` to regenerate `src/<step_name>/conda.yml`
+
+## Do not
+
+- Copy-paste artifact utilities into step files
+- Hardcode artifact paths or project names in `run.py` files
+- Edit `conda.yml` files manually
+- Add business logic (column names, thresholds) inside `components/`
+```
+
+---
+
+## Guarantees
+
+- Uses `folder_structure_agent.md` for repository layout conventions; agent_name = `mlflow_pipeline_template`
+- Generated project contains no hardcoded domain logic — only structural skeleton with `# TODO` markers
+- `components/shared/artifact_utils/` is the single source of truth for artifact utilities — never duplicated per step
+- **Artifact backend is pluggable** — controlled by `artifact_backend` in `copier.yml`; defaults to MLflow (zero setup), with DVC and W&B as opt-in choices
+- Backend-specific files are only included for the chosen backend (e.g., `dvc_artifacts.py` only when `artifact_backend=dvc`)
+- `AGENTS.md` is always generated so subsequent agents (including `create_env_agent`) know exactly what to do
+- `generate_steps.py` and `generate_components.py` are copied into the generated project root so new steps can be added at any time without re-running Copier
+- Windows-safe artifact download is built into `wandb_artifacts.py` via `safe_artifact_download()` (only when W&B backend is chosen)
+- No `conda.yml` templates are included — `create_env_agent` is invoked as the final post-generation task to produce all environment files
+- `copier update` is supported — template changes propagate to existing generated projects without destroying user-written logic
+
+---
+
+## Design principles
+
+- **Declare, don't implement** — users express what steps they need; the template provides the skeleton
+- **Single source of truth** — shared utilities live in one place, config lives in one place
+- **Pluggable artifact backends** — MLflow Artifacts (default, zero setup), DVC (git-like data versioning), or W&B (cloud tracking) — chosen at generation time
+- **Agent-friendly** — `AGENTS.md` ensures every downstream agent knows what is expected of it
+- **Separation of concerns** — `components/` for generic reusable logic, `src/` for domain-specific logic
+- **Windows-compatible** — when W&B is chosen, artifact download is routed through `safe_artifact_download()`
+- **`create_env_agent` handles environments** — this agent does not generate pinned dependency lists or `conda.yml` files
+
+---
+
+## Repository layout (for this agent's own files)
+
+Follows `folder_structure_agent.md`:
+
+```text
+chandmare_ai_agents/
+  agents/
+    mlflow_pipeline_template_agent.md    ← this file
+  packages/
+    mlflow_pipeline_template/
+      copier.yml
+      generate_steps.py
+      generate_components.py
+      README.md
+      template/
+        AGENTS.md.jinja
+        main.py.jinja
+        MLproject.jinja
+        config.yaml.jinja
+        components/
+          shared/
+            pyproject.toml.jinja
+            artifact_utils/
+              __init__.py.jinja
+              mlflow_artifacts.py
+              dvc_artifacts.py
+              file_utils.py
+              wandb_artifacts.py
+        _blueprints/
+          step/
+            run.py.jinja
+            run_dvc.py.jinja
+            run_wandb.py.jinja
+            MLproject.jinja
+          component/
+            run.py.jinja
+            run_dvc.py.jinja
+            run_wandb.py.jinja
+            MLproject.jinja
+```
