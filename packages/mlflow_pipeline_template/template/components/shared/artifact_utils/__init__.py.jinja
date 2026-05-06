@@ -1,0 +1,29 @@
+"""
+Shared artifact utilities for the pipeline.
+Backend: {% if artifact_backend == 'wandb' %}Weights & Biases{% elif artifact_backend == 'dvc' %}DVC{% else %}MLflow{% endif %}
+"""
+{% if artifact_backend == 'wandb' %}
+from .wandb_artifacts import safe_artifact_download, log_artifact
+{% elif artifact_backend == 'dvc' %}
+from .dvc_artifacts import track_artifact, pull_artifact, push_artifact
+{% else %}
+from .mlflow_artifacts import log_artifact_file, download_artifact
+{% endif %}
+from .file_utils import read_one_csv_to_df, empty_dir
+
+__all__ = [
+{% if artifact_backend == 'wandb' %}
+    "safe_artifact_download",
+    "log_artifact",
+{% elif artifact_backend == 'dvc' %}
+    "track_artifact",
+    "pull_artifact",
+    "push_artifact",
+{% else %}
+    "log_artifact_file",
+    "download_artifact",
+{% endif %}
+    "read_one_csv_to_df",
+    "empty_dir",
+]
+

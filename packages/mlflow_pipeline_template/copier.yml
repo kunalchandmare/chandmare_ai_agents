@@ -1,0 +1,63 @@
+project_name:
+  type: str
+  help: "Project name (used as MLflow project name)"
+
+project_slug:
+  type: str
+  default: "{{ project_name | lower | replace(' ', '_') }}"
+  help: "Python-safe slug (auto-derived from project_name)"
+
+artifact_backend:
+  type: str
+  default: "mlflow"
+  choices:
+    mlflow: "MLflow Artifacts (built-in, zero setup)"
+    dvc: "DVC (git-like data versioning, best for large datasets)"
+    wandb: "Weights & Biases (requires account)"
+  help: "Artifact versioning backend"
+
+wandb_entity:
+  type: str
+  default: ""
+  help: "Weights & Biases entity (your username or team name)"
+  when: "{{ artifact_backend == 'wandb' }}"
+
+wandb_project:
+  type: str
+  default: "{{ project_name | lower | replace(' ', '_') }}"
+  help: "Weights & Biases project name"
+  when: "{{ artifact_backend == 'wandb' }}"
+
+wandb_version:
+  type: str
+  default: "0.17.0"
+  help: "Weights & Biases version"
+  when: "{{ artifact_backend == 'wandb' }}"
+
+dvc_remote:
+  type: str
+  default: ""
+  help: "DVC remote storage URL (e.g. s3://bucket/path, gdrive://id, /local/path). Leave empty to configure later."
+  when: "{{ artifact_backend == 'dvc' }}"
+
+
+mlflow_version:
+  type: str
+  default: "2.14.1"
+  help: "MLflow version"
+
+pipeline_steps:
+  type: str
+  default: "ingest,clean,train,evaluate"
+  help: "Comma-separated project-specific pipeline steps (created under src/)"
+
+reusable_components:
+  type: str
+  default: "download_data,train_val_test_split,test_model"
+  help: "Comma-separated reusable component names (created under components/)"
+
+_tasks:
+  - "python generate_steps.py . {{ pipeline_steps }}"
+  - "python generate_components.py . {{ reusable_components }}"
+  - "python -m create_env scan {{ _copier_conf.dst_path }}"
+

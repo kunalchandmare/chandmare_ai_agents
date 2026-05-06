@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+"""
+Reusable component: {{ step_name }}
+
+This component belongs in components/ because it contains NO domain-specific logic.
+Keep it schema-agnostic — if you need column names or thresholds, move to src/.
+"""
+import argparse
+import logging
+import os
+import sys
+
+import mlflow
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from components.shared.artifact_utils.mlflow_artifacts import (
+    log_artifact_file,
+    download_artifact,
+)
+from components.shared.artifact_utils.file_utils import read_one_csv_to_df, empty_dir
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)-15s %(message)s")
+logger = logging.getLogger()
+
+
+def go(args):
+    with mlflow.start_run():
+        # artifact_dir = download_artifact(args.input_artifact)
+        # TODO: implement reusable component logic (schema-agnostic)
+        pass
+        # log_artifact_file("<output_path>")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Component: {{ step_name }}")
+    parser.add_argument("--input_artifact", type=str, required=True, help="MLflow artifact URI")
+    parser.add_argument("--output_artifact", type=str, required=True, help="Output artifact name")
+    parser.add_argument("--output_type", type=str, required=True, help="Artifact type tag")
+    parser.add_argument("--output_description", type=str, required=True, help="Description")
+    args = parser.parse_args()
+    go(args)

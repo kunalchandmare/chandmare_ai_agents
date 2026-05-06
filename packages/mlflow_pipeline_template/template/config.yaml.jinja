@@ -1,0 +1,29 @@
+main:
+  project_name: {{ project_slug }}
+  experiment_name: development
+  steps: all
+{% if artifact_backend == 'wandb' %}
+  wandb_entity: {{ wandb_entity }}
+  wandb_project: {{ wandb_project }}
+{% endif %}
+
+# ── src/ step configuration ────────────────────────────────────────────────────
+{% for step in pipeline_steps.split(',') -%}
+{{ step.strip() }}:
+  # TODO: add configuration keys for the '{{ step.strip() }}' step
+  input_artifact: ""
+  output_artifact: ""
+  output_type: "{{ step.strip() }}_output"
+  output_description: "Output of {{ step.strip() }} step"
+
+{% endfor %}
+# ── components/ configuration ──────────────────────────────────────────────────
+{% for comp in reusable_components.split(',') -%}
+{{ comp.strip() }}:
+  # TODO: add configuration keys for the '{{ comp.strip() }}' component
+  input_artifact: ""
+  output_artifact: ""
+  output_type: "{{ comp.strip() }}_output"
+  output_description: "Output of {{ comp.strip() }} component"
+
+{% endfor %}

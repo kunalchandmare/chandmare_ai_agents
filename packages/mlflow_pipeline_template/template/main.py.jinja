@@ -1,0 +1,77 @@
+"""
+Pipeline orchestrator for {{ project_name }}.
+Driven by Hydra config (config.yaml). Run with:
+
+    mlflow run . -P steps=all
+    mlflow run . -P steps=ingest,clean
+    mlflow run . -P hydra_options="etl.min_price=10"
+"""
+import os
+import mlflow
+import hydra
+from omegaconf import DictConfig
+{% if artifact_backend == 'wandb' %}
+import wandb
+{% endif %}
+
+# ── Execution order ────────────────────────────────────────────────────────────
+# src/ steps  — project-specific logic
+_src_steps = [
+{%- for step in pipeline_steps.split(',') %}
+    "{{ step.strip() }}",
+{%- endfor %}
+]
+
+# components/ steps — reusable, domain-agnostic logic
+_component_steps = [
+{%- for comp in reusable_components.split(',') %}
+    "{{ comp.strip() }}",
+{%- endfor %}
+]
+
+_steps = _src_steps + _component_steps
+
+
+@hydra.main(version_base=None, config_name="config", config_path=".")
+def go(config: DictConfig):
+{% if artifact_backend == 'wandb' %}
+    os.environ["WANDB_PROJECT"] = config["main"]["project_name"]
+    os.environ["WANDB_RUN_GROUP"] = config["main"]["experiment_name"]
+{% endif %}
+
+    steps_par = config["main"]["steps"]
+    active_steps = steps_par.split(",") if steps_par != "all" else _steps
+
+    # ── src/ steps ─────────────────────────────────────────────────────────────
+{%- for step in pipeline_steps.split(',') %}
+{% set s = step.strip() %}
+    if "{{ s }}" in active_steps:
+        mlflow.run(
+            os.path.join(hydra.utils.get_original_cwd(), "src", "{{ s }}"),
+            "main",
+            env_manager="local",
+            parameters={
+                # TODO: map config["{{ s }}"] keys to step parameters
+                # "input_artifact": config["{{ s }}"]["input_artifact"],
+                # "output_artifact": config["{{ s }}"]["output_artifact"],
+            },
+        )
+{% endfor %}
+    # ── components/ steps ───────────────────────────────────────────────────────
+{%- for comp in reusable_components.split(',') %}
+{% set c = comp.strip() %}
+    if "{{ c }}" in active_steps:
+        mlflow.run(
+            os.path.join(hydra.utils.get_original_cwd(), "components", "{{ c }}"),
+            "main",
+            env_manager="local",
+            parameters={
+                # TODO: map config["{{ c }}"] keys to component parameters
+                # "input_artifact": config["{{ c }}"]["input_artifact"],
+                # "output_artifact": config["{{ c }}"]["output_artifact"],
+            },
+        )
+{% endfor %}
+
+if __name__ == "__main__":
+    go()

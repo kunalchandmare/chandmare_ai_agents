@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "pipeline-shared-utils"
+version = "1.0.0"
+description = "Shared artifact utilities for MLflow pipeline projects"
+authors = [{ name = "Chandmare, Kunal" }]
+dependencies = [
+{% if artifact_backend == 'wandb' %}
+    "wandb>={{ wandb_version }}",
+{% elif artifact_backend == 'dvc' %}
+    "dvc",
+{% endif %}
+    "mlflow",
+    "pandas",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["artifact_utils*"]
