@@ -1,0 +1,61 @@
+# pipeline.yaml — Pipeline definition
+# Defines steps (project-specific) and components (reusable).
+# Arguments auto-propagate to run.py (argparse) and MLproject (parameters).
+
+steps:
+  clean:
+    description: "Apply data cleaning and filtering"
+    arguments:
+      input_artifact:
+        type: str
+        required: true
+        description: "Input artifact from previous step"
+      min_price:
+        type: float
+        default: 10.0
+        description: "Minimum price threshold"
+      max_price:
+        type: float
+        default: 350.0
+        description: "Maximum price threshold"
+
+  train:
+    description: "Train the model"
+    arguments:
+      input_artifact:
+        type: str
+        required: true
+        description: "Training data artifact"
+      random_seed:
+        type: int
+        default: 42
+        description: "Random seed for reproducibility"
+
+components:
+  download_data:
+    description: "Generic artifact downloader — schema-agnostic"
+    arguments:
+      artifact_name:
+        type: str
+        required: true
+        description: "Artifact to download"
+      artifact_version:
+        type: str
+        default: "latest"
+        description: "Version tag"
+
+  train_val_test_split:
+    description: "Split dataset into train/val/test — schema-agnostic"
+    arguments:
+      input_artifact:
+        type: str
+        required: true
+        description: "Input dataset artifact"
+      test_size:
+        type: float
+        default: 0.2
+        description: "Test set fraction"
+      random_seed:
+        type: int
+        default: 42
+        description: "Random seed"
