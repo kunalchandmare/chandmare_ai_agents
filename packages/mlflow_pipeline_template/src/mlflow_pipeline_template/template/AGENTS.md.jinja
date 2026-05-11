@@ -51,13 +51,13 @@ This project uses **MLflow's built-in artifact tracking** (no extra dependencies
 ## Active pipeline steps
 
 ### src/ (project-specific)
-{% for step in pipeline_steps.split(',') %}
-- `src/{{ step.strip() }}/` — implement domain logic in `run.py`
+{% for step in step_names %}
+- `src/{{ step }}/` — implement domain logic in `run.py`
 {%- endfor %}
 
 ### components/ (reusable)
-{% for comp in reusable_components.split(',') %}
-- `components/{{ comp.strip() }}/` — generic component, keep schema-agnostic
+{% for comp in component_names %}
+- `components/{{ comp }}/` — generic component, keep schema-agnostic
 {%- endfor %}
 
 ---
@@ -81,22 +81,12 @@ python -m create_env scan components/<comp_name>
 Run `create_env_agent` after adding any new `import` statement to any `.py` file.
 
 ### `mlflow_pipeline_template_agent`
-Use to scaffold new steps or components without manual file creation.
+Use to add new steps or components — edit `pipeline.yml` and re-run `copier update .`
 
-```bash
-# Add a new src/ step
-python generate_steps.py . <new_step_name>
-
-# Add a new components/ component
-python generate_components.py . <new_component_name>
-```
-
-After generating:
+After updating:
 1. Implement logic in the new `run.py`
-2. Add step-specific parameters to the new `MLproject`
-3. Add a config section in `config.yaml`
-4. Wire the `mlflow.run()` call in `main.py`
-5. Run `create_env_agent` on the new step folder
+2. Add a config section in `config.yaml`
+3. Run `create_env_agent` on the new step/component folder
 
 ---
 

@@ -1,0 +1,31 @@
+# config.yaml — Runtime configuration for {{ project_name }}
+#
+# This file provides VALUES for the arguments defined in pipeline.yml.
+# Each section name must match a step or component name from pipeline.yml.
+# Edit these values to tune your pipeline runs.
+# Override at runtime: mlflow run . -P hydra_options="clean.min_price=20"
+
+main:
+  project_name: {{ project_slug }}
+  experiment_name: development
+  steps: all
+{% if artifact_backend == 'wandb' %}
+  wandb_entity: {{ wandb_entity }}
+  wandb_project: {{ wandb_project }}
+{% endif %}
+
+# ── Add runtime values for your steps and components below ─────────────────────
+# Section names must match the keys in pipeline.yml.
+# Example:
+#
+# clean:
+#   input_artifact: "raw_data.csv:latest"
+#   min_price: 10.0
+#   max_price: 350.0
+#
+# train_val_test_split:
+#   input_artifact: "clean_data.csv:latest"
+#   test_size: 0.2
+#   val_size: 0.2
+#   random_seed: 42
+#   stratify_by: "none"

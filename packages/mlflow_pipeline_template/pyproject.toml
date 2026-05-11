@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chandmare-mlflow-pipeline-template"
+version = "1.0.0"
+description = "Generate MLflow + Hydra pipeline projects from config.yaml + pipeline.yaml"
+authors = [{ name = "Chandmare, Kunal" }]
+requires-python = ">=3.10"
+dependencies = [
+    "jinja2>=3.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+mlflow-pipeline-template = "mlflow_pipeline_template.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mlflow_pipeline_template = ["template/**/*", "_blueprints/**/*"]
+

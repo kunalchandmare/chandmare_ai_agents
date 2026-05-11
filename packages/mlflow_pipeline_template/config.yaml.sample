@@ -1,0 +1,20 @@
+# config.yaml — Project-level configuration
+# Copy this file, fill in your values, and pass to the template agent.
+
+# Required: project name
+project_name: "my_ml_project"
+
+# Artifact backend: mlflow (default) | dvc | wandb
+artifact_backend: "mlflow"
+
+# MLflow version
+mlflow_version: "2.14.1"
+
+# --- Only when artifact_backend = "wandb" ---
+# wandb_entity: "myteam"
+# wandb_project: "my_ml_project"
+# wandb_version: "0.17.0"
+
+# --- Only when artifact_backend = "dvc" ---
+# dvc_remote: "s3://my-bucket/artifacts"
+

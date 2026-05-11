@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 """
 Reusable component: {{ step_name }}
-
+{% if description %}
+{{ description }}
+{% endif %}
 This component belongs in components/ because it contains NO domain-specific logic.
 Keep it schema-agnostic — if you need column names or thresholds, move to src/.
 """
@@ -28,17 +30,32 @@ logger = logging.getLogger()
 
 def go(args):
     with mlflow.start_run():
-        # artifact_dir = download_artifact(args.input_artifact)
         # TODO: implement reusable component logic (schema-agnostic)
         pass
-        # log_artifact_file("<output_path>")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Component: {{ step_name }}")
-    parser.add_argument("--input_artifact", type=str, required=True, help="MLflow artifact URI")
-    parser.add_argument("--output_artifact", type=str, required=True, help="Output artifact name")
-    parser.add_argument("--output_type", type=str, required=True, help="Artifact type tag")
-    parser.add_argument("--output_description", type=str, required=True, help="Description")
+{% for arg_name, arg_cfg in arguments.items() %}
+{% set arg_type = arg_cfg.get('type', 'str') %}
+{% set python_type = {'str': 'str', 'int': 'int', 'float': 'float', 'bool': 'bool'}.get(arg_type, 'str') %}
+{% if arg_cfg.get('required', false) %}
+    parser.add_argument(
+        "--{{ arg_name }}", type={{ python_type }}, required=True,
+        help="{{ arg_cfg.get('description', '') }}"
+    )
+{% else %}
+    parser.add_argument(
+        "--{{ arg_name }}", type={{ python_type }}, default={{ arg_cfg.get('default', 'None') | tojson }},
+        help="{{ arg_cfg.get('description', '') }}"
+    )
+{% endif %}
+{% endfor %}
+{% if not arguments %}
+    # TODO: define arguments in pipeline.yml and re-run generate_components.py
+    parser.add_argument("--input_artifact", type=str, required=True, help="Input artifact")
+    parser.add_argument("--output_artifact", type=str, required=True, help="Output artifact")
+{% endif %}
+
     args = parser.parse_args()
     go(args)
