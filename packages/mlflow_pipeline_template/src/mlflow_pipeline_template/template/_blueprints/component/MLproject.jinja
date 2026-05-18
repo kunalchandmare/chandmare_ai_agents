@@ -5,10 +5,9 @@ entry_points:
   main:
     parameters:
 {% for arg_name, arg_cfg in arguments.items() %}
-{% set mlflow_type = {'str': 'string', 'int': 'string', 'float': 'string', 'bool': 'string'}.get(arg_cfg.get('type', 'str'), 'string') %}
       {{ arg_name }}:
         description: "{{ arg_cfg.get('description', '') }}"
-        type: {{ mlflow_type }}
+        type: {% set t = arg_cfg.get('type', 'str') %}{% if t == 'str' %}string{% elif t == 'int' or t == 'float' %}float{% elif t == 'bool' %}string{% else %}{{ t }}{% endif %}
 {% if not arg_cfg.get('required', false) %}
         default: "{{ arg_cfg.get('default', '') }}"
 {% endif %}

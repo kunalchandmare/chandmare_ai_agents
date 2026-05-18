@@ -4,58 +4,84 @@ Reusable component: {{ step_name }}
 {% if description %}
 {{ description }}
 {% endif %}
-This component belongs in components/ because it contains NO domain-specific logic.
-Keep it schema-agnostic — if you need column names or thresholds, move to src/.
 """
 import argparse
 import logging
-import os
-import sys
-
+{% if artifact_backend == 'wandb' %}
+import wandb
+{% elif artifact_backend == 'dvc' %}
+import subprocess
+from pathlib import Path
+{% endif %}
 import mlflow
-
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-from components.shared.artifact_utils.mlflow_artifacts import (
-    log_artifact_file,
-    download_artifact,
-)
-from components.shared.artifact_utils.file_utils import read_one_csv_to_df, empty_dir
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)-15s %(message)s")
 logger = logging.getLogger()
 
 
 def go(args):
+{% if artifact_backend == 'wandb' %}
+    run = wandb.init(job_type="{{ step_name }}")
+    run.config.update(vars(args))
+
+    # --- Download input artifact (W&B) ---
+    # artifact = run.use_artifact("<artifact_name:version>")
+    # safe_name = artifact.name.replace(":", "_")
+    # artifact_dir = Path("safe_artifacts") / safe_name
+    # artifact_dir.mkdir(parents=True, exist_ok=True)
+    # artifact.download(root=str(artifact_dir))
+
+    # TODO: implement component logic (keep it schema-agnostic)
+
+    # --- Upload output artifact (W&B) ---
+    # output = wandb.Artifact("<name>", type="<type>", description="<desc>")
+    # output.add_file("<path>")
+    # run.log_artifact(output)
+    # output.wait()
+
+    run.finish()
+{% elif artifact_backend == 'dvc' %}
     with mlflow.start_run():
-        # TODO: implement reusable component logic (schema-agnostic)
+        # --- Pull input artifact (DVC) ---
+        # subprocess.run(["dvc", "pull", "<file>.dvc"], check=True)
+
+        # TODO: implement component logic (keep it schema-agnostic)
+
+        # --- Track and push output artifact (DVC) ---
+        # subprocess.run(["dvc", "add", "<output_path>"], check=True)
+        # subprocess.run(["dvc", "push"], check=True)
+
         pass
+{% else %}
+    with mlflow.start_run():
+        # --- Download input artifact (MLflow) ---
+        # local_path = mlflow.artifacts.download_artifacts(artifact_uri="<uri>")
+
+        # TODO: implement component logic (keep it schema-agnostic)
+
+        # --- Upload output artifact (MLflow) ---
+        # mlflow.log_artifact("<local_path>")
+
+        pass
+{% endif %}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Component: {{ step_name }}")
 {% for arg_name, arg_cfg in arguments.items() %}
 {% set arg_type = arg_cfg.get('type', 'str') %}
-{% set python_type = {'str': 'str', 'int': 'int', 'float': 'float', 'bool': 'bool'}.get(arg_type, 'str') %}
 {% if arg_cfg.get('required', false) %}
     parser.add_argument(
-        "--{{ arg_name }}", type={{ python_type }}, required=True,
+        "--{{ arg_name }}", type={{ arg_type }}, required=True,
         help="{{ arg_cfg.get('description', '') }}"
     )
 {% else %}
     parser.add_argument(
-        "--{{ arg_name }}", type={{ python_type }}, default={{ arg_cfg.get('default', 'None') | tojson }},
+        "--{{ arg_name }}", type={{ arg_type }}, default={{ arg_cfg.get('default', 'None') | tojson }},
         help="{{ arg_cfg.get('description', '') }}"
     )
 {% endif %}
 {% endfor %}
-{% if not arguments %}
-    # TODO: define arguments in pipeline.yml and re-run generate_components.py
-    parser.add_argument("--input_artifact", type=str, required=True, help="Input artifact")
-    parser.add_argument("--output_artifact", type=str, required=True, help="Output artifact")
-{% endif %}
 
     args = parser.parse_args()
     go(args)
