@@ -15,6 +15,6 @@ mlflow_version: "2.14.1"
 # wandb_project: "my_ml_project"
 # wandb_version: "0.17.0"
 
-# --- Only when artifact_backend = "dvc" ---
+# --- Required when artifact_backend = "dvc" ---
 # dvc_remote: "s3://my-bucket/artifacts"
 
