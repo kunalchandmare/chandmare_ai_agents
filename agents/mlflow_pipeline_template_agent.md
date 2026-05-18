@@ -1,214 +1,159 @@
-# mlflow_pipeline_template_agent
+# mlflow_pipeline_template_agent specification
 
 **Author:** Chandmare, Kunal  
 **Model:** Claude Opus 4  
 **Created:** 2026-05-06
 
-`mlflow_pipeline_template_agent` is a pip-installable CLI tool that generates a fully structured MLflow + Hydra pipeline project from two user-provided YAML files: `config.yaml` (project settings) and `pipeline.yaml` (step/component definitions with arguments).
-
----
-
-## Installation
-
-```bash
-pip install chandmare-mlflow-pipeline-template
-```
-
----
+`mlflow_pipeline_template_agent` generates a fully structured MLflow + Hydra pipeline project skeleton from two user-provided YAML files: `config.yaml` (project settings) and `pipeline.yaml` (step/component definitions with arguments).
 
 ## Command
 
 ```bash
-# Generate a project (config.yaml and pipeline.yaml in current directory)
-mlflow-pipeline-template generate ./my_project
-
-# Specify custom config file paths
-mlflow-pipeline-template generate ./my_project --config my_config.yaml --pipeline my_pipeline.yaml
+mlflow-pipeline-template generate <output_path>
+mlflow-pipeline-template generate <output_path> --config <config.yaml> --pipeline <pipeline.yaml>
 ```
 
----
+## Options
 
-## Input Files
-
-The user provides exactly **two YAML files**:
-
-### 1. `config.yaml` — Project-level configuration
-
-```yaml
-project_name: "my_ml_project"
-artifact_backend: "mlflow"       # mlflow | dvc | wandb
-mlflow_version: "2.14.1"
-# wandb_entity: "myteam"        # only if artifact_backend: wandb
-# wandb_project: "my_project"   # only if artifact_backend: wandb
-# dvc_remote: "s3://bucket"     # only if artifact_backend: dvc
-```
-
-### 2. `pipeline.yaml` — Pipeline definition
-
-```yaml
-steps:
-  clean:
-    description: "Apply data cleaning"
-    arguments:
-      input_artifact:
-        type: str
-        required: true
-        description: "Input artifact"
-      min_price:
-        type: float
-        default: 10.0
-        description: "Minimum price threshold"
-
-components:
-  download_data:
-    description: "Generic artifact downloader"
-    arguments:
-      artifact_name:
-        type: str
-        required: true
-        description: "Artifact to download"
-```
-
-See `config.yaml.sample` and `pipeline.yaml.sample` for full examples.
-
----
+- `<output_path>`: Destination directory for the generated project (required)
+- `--config <path>`: Path to project config YAML (default: `./config.yaml`)
+- `--pipeline <path>`: Path to pipeline definition YAML (default: `./pipeline.yaml`)
 
 ## Scope
 
-This agent is responsible for:
-- Generating the full project skeleton from `config.yaml` + `pipeline.yaml`
-- Creating per-step folders under `src/` with auto-generated `run.py` and `MLproject` (argparse and parameters populated from `pipeline.yaml` arguments)
-- Creating per-component folders under `components/` the same way
-- Producing the `AGENTS.md` file that tells downstream agents how to operate
-- Including the correct artifact backend utilities based on `artifact_backend`
-- Running `create_env_agent` as final step (if installed) to generate `conda.yml` files
+`mlflow_pipeline_template_agent` is a pip-installable CLI tool (`pip install chandmare-mlflow-pipeline-template`).
 
-It does **not**:
-- Implement business logic inside `run.py` files (user's responsibility)
-- Generate `conda.yml` manually — delegates to `create_env_agent`
-- Push to remote repositories
-- Create conda environments
+It does not:
+- implement business logic inside generated `run.py` files
+- generate `conda.yml` or environment files (delegates to `create_env_agent`)
+- push generated projects to remote repositories
+- create conda environments
 
----
+All generation happens locally from the two input YAML files.
 
-## Architecture: components/ vs src/
+## Guarantees
+
+- Uses `folder_structure_agent.md` for maintaining folder structure of the agents generated artefacts; agent_name = `folder_structure`
+- **Package must include `pyproject.toml`** at `packages/mlflow_pipeline_template/`. The `pyproject.toml` is the single source of truth for package metadata, build configuration, entry points, and package discovery.
+- **Package author must match the agent author** (`Chandmare, Kunal`).
+- User provides exactly two files: `config.yaml` and `pipeline.yaml`.
+- Arguments defined in `pipeline.yaml` auto-propagate to `run.py` (argparse) and `MLproject` (parameters section). No manual duplication.
+- Steps (`pipeline.yaml` → `steps:`) generate under `src/<step_name>/`.
+- Components (`pipeline.yaml` → `components:`) generate under `components/<component_name>/`.
+- Artifact backend is pluggable: `mlflow` (default), `dvc`, `wandb`. Backend-specific files are only included for the chosen backend.
+- `create_env_agent` is invoked as the final post-generation task (if installed) to produce all `conda.yml` files.
+- Existing `run.py` files are never overwritten on re-run — safe to add steps incrementally.
+- Generated project is clean: no `.jinja` templates, no generator scripts, no blueprint directories are copied into the output. Only runnable project files are emitted.
+
+## Architecture rules
 
 ### `src/` — Project-Specific Steps
 
-Steps defined under `steps:` in `pipeline.yaml`. They contain **domain logic** — know column names, thresholds, model architecture.
-
-- ❌ Not reusable across projects
-- ✅ Contains the actual ML intelligence
+- Defined under `steps:` in `pipeline.yaml`
+- Contain domain logic (column names, thresholds, model architecture)
+- Unique to corresponding project — not reusable without modification
 - Examples: `clean`, `train`, `feature_eng`, `evaluate`
 
 ### `components/` — Reusable, Schema-Agnostic Blocks
 
-Components defined under `components:` in `pipeline.yaml`. They are **generic** — work with any data without modification.
+- Defined under `components:` in `pipeline.yaml`
+- Generic — work with any data without modification
+- Must NOT contain domain logic (column names, business rules)
+- `components/shared/artifact_utils/` is the single source of truth for artifact helpers — never duplicated per step
 
-- ✅ Reusable across any project
-- ❌ Must NOT contain domain logic
-- Examples: `download_data`, `train_val_test_split`, `test_model`
+### Rule of thumb
 
-### Rule
+> If the function needs to understand *what's inside* the data → `steps:`  
+> If the function works the same regardless of what it's processing → `components:`
 
-> Knows column names or business rules → `steps:`  
-> Operates on artifacts as opaque files → `components:`
+## Validation rules
 
----
+### config.yaml
 
-## Generated Project Structure
+- `project_name` must be a non-empty string
+- `artifact_backend` must be one of: `mlflow`, `dvc`, `wandb`
+- If `artifact_backend: wandb`, `wandb_entity` must be non-empty
+- If `artifact_backend: dvc`, `dvc_remote` must be a non-empty string (e.g. `s3://bucket/path`, `/local/path`)
 
-```text
-<project_name>/
-├── AGENTS.md
-├── main.py                          ← Hydra orchestrator (reads pipeline.yaml dynamically)
-├── MLproject
-├── config.yaml                      ← runtime values for step arguments
-├── pipeline.yaml                    ← copied from input
-├── conda.yml                        ← generated by create_env_agent
-│
-├── components/
-│   ├── shared/
-│   │   ├── pyproject.toml
-│   │   └── artifact_utils/
-│   │       ├── __init__.py
-│   │       ├── mlflow_artifacts.py
-│   │       ├── dvc_artifacts.py     ← only if dvc
-│   │       ├── wandb_artifacts.py   ← only if wandb
-│   │       └── file_utils.py
-│   └── <component_name>/
-│       ├── run.py
-│       ├── MLproject
-│       └── conda.yml
-│
-└── src/
-    └── <step_name>/
-        ├── run.py
-        ├── MLproject
-        └── conda.yml
-```
+### pipeline.yaml
 
----
+- Must contain at least one key under `steps:` or `components:`
+- Each step/component must have a `description` string
+- Each argument must have `type` (any valid Python type, e.g. `str`, `int`, `float`, `bool`, `list`, `dict`) and `description`
+- If `required: true`, no `default` is needed
+- If `required` is absent or false, `default` must be provided
+- Empty `arguments:` is allowed (step with no parameters)
 
-## Guarantees
+## Output rules
 
-- Pip-installable: `pip install chandmare-mlflow-pipeline-template`
-- No Copier dependency — pure Python CLI tool
-- User provides only `config.yaml` + `pipeline.yaml`
-- Arguments defined in `pipeline.yaml` auto-propagate to `run.py` (argparse) and `MLproject` (parameters)
-- Artifact backend is pluggable: `mlflow` (default), `dvc`, `wandb`
-- Backend-specific files only included for chosen backend
-- `AGENTS.md` always generated for downstream agents
-- `create_env_agent` handles all `conda.yml` generation
-- Existing `run.py` files are not overwritten on re-run (safe to add steps incrementally)
+- Generates `main.py` — Hydra orchestrator that reads `pipeline.yaml` at runtime for step ordering
+- Generates `MLproject` — root MLflow entry point
+- Generates `config.yaml` — Hydra runtime config with one section per step/component (values are TODO placeholders)
+- Copies `pipeline.yaml` into the generated project
+- Generates `components/shared/artifact_utils/` with backend-appropriate utilities
+- Generates per-step `src/<name>/run.py` and `src/<name>/MLproject`
+- Generates per-component `components/<name>/run.py` and `components/<name>/MLproject`
+- Does NOT generate any `conda.yml` files — `create_env_agent` handles that
 
----
+## Versioning
 
-## Design principles
-
-- **Two files, full project** — `config.yaml` + `pipeline.yaml` is all you need
-- **Pip-installable** — `pip install` and use immediately, no template repo cloning
-- **Declare, don't implement** — define steps and arguments; get skeleton code
-- **Single source of truth** — arguments defined once in `pipeline.yaml`, propagated everywhere
-- **Pluggable backends** — MLflow (default), DVC, W&B
-- **Agent-friendly** — `AGENTS.md` ensures all downstream agents know the rules
-- **`create_env_agent` handles environments** — no manual conda.yml editing
-
----
+- The package is installable and versioned starting from `1.0.0`
+- Template improvements are released through normal package version updates
 
 ## Repository layout
 
 ```text
-packages/mlflow_pipeline_template/
-├── pyproject.toml              ← package metadata, entry point, dependencies
-├── README.md                   ← full parameter reference documentation
-├── config.yaml.sample          ← example config.yaml for users to copy
-├── pipeline.yaml.sample        ← example pipeline.yaml for users to copy
-└── src/mlflow_pipeline_template/
-    ├── __init__.py             ← package version
-    ├── cli.py                  ← CLI entry point (argparse, dispatches to generator)
-    ├── generator.py            ← core logic: reads YAML, renders templates, writes output
-    └── template/               ← Jinja templates shipped with the package
-        ├── AGENTS.md.jinja     ← generates AGENTS.md in output project
-        ├── main.py.jinja       ← generates Hydra orchestrator (reads pipeline.yaml at runtime)
-        ├── MLproject.jinja     ← generates root MLflow entry point
-        ├── config.yaml.jinja   ← generates Hydra runtime config skeleton
-        ├── components/shared/  ← artifact utility source files (copied to output)
-        │   └── artifact_utils/ ← mlflow_artifacts.py, dvc_artifacts.py, wandb_artifacts.py, file_utils.py
-        └── _blueprints/        ← per-step/component skeleton templates
-            ├── step/           ← run.py.jinja, run_dvc.py.jinja, run_wandb.py.jinja, MLproject.jinja
-            └── component/      ← same variants for reusable components
+chandmare_ai_agents/
+  agents/
+    mlflow_pipeline_template_agent.md
+  packages/
+    mlflow_pipeline_template/
+      pyproject.toml
+      README.md
+      config.yaml.sample
+      pipeline.yaml.sample
+      src/
+        mlflow_pipeline_template/
+          __init__.py
+          cli.py
+          generator.py
+          template/
+            main.py.jinja
+            MLproject.jinja
+            config.yaml.jinja
+            components/
+              shared/
+                pyproject.toml.jinja
+                artifact_utils/
+                  __init__.py.jinja
+                  mlflow_artifacts.py
+                  dvc_artifacts.py
+                  file_utils.py
+                  wandb_artifacts.py
+            _blueprints/
+              step/
+                run.py.jinja
+                run_dvc.py.jinja
+                run_wandb.py.jinja
+                MLproject.jinja
+              component/
+                run.py.jinja
+                run_dvc.py.jinja
+                run_wandb.py.jinja
+                MLproject.jinja
+  docs/
+    generated/
+      mlflow_pipeline_template/
+        README.md
 ```
 
-### Key files explained
+## Design principles
 
-| File | Purpose |
-|---|---|
-| `cli.py` | Parses `mlflow-pipeline-template generate` command, validates inputs, calls `generator.py` |
-| `generator.py` | Orchestrates generation: renders root templates, copies shared utils, generates step/component folders from blueprints, runs `create_env_agent` |
-| `_blueprints/step/run.py.jinja` | Template for `src/<step>/run.py` — includes argparse populated from `pipeline.yaml` arguments |
-| `_blueprints/step/MLproject.jinja` | Template for `src/<step>/MLproject` — parameters section from `pipeline.yaml` arguments |
-| `components/shared/artifact_utils/` | Utility files copied verbatim (or rendered from `.jinja`) into the generated project's `components/shared/` |
-| `config.yaml.sample` | Reference file showing all `config.yaml` parameters — users copy and edit |
-| `pipeline.yaml.sample` | Reference file showing `pipeline.yaml` structure — users copy and edit |
-
+- Two files, full project
+- Pip-installable — no template repo cloning
+- Declare, don't implement
+- Single source of truth for arguments (pipeline.yaml)
+- Pluggable artifact backends
+- Agent-friendly (this agent spec is the single source of truth for rules)
+- `create_env_agent` handles all environment generation
+- No automatic remote mutation
