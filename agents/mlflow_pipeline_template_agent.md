@@ -9,17 +9,17 @@
 ## Command
 
 ```bash
-# Init mode: creates sample config.yaml and pipeline.yaml in project folder
+# Init mode: creates config.yaml.sample and pipeline.yaml.sample in project folder
 mlflow-pipeline-template generate <project_path>
 
-# Generate mode: generates full pipeline (config.yaml and pipeline.yaml must exist)
+# Generate mode: generates full pipeline (files must have .yaml extension)
 mlflow-pipeline-template generate <project_path> --config <path> --pipeline <path>
 ```
 
 ### Behavior
 
-- **Only `project_path` given (no `--config`/`--pipeline`)** → creates project folder with sample `config.yaml` and `pipeline.yaml` for user to edit. Does NOT generate the pipeline.
-- **`--config` and `--pipeline` given** → parses both files and generates the full MLflow pipeline structure in `project_path`.
+- **Only `project_path` given (no `--config`/`--pipeline`)** → creates project folder with `config.yaml.sample` and `pipeline.yaml.sample` for user to rename and edit. Does NOT generate the pipeline.
+- **`--config` and `--pipeline` given** → validates `.yaml`/`.yml` extension, parses both files, and generates the full MLflow pipeline structure in `project_path`.
 
 ## Options
 

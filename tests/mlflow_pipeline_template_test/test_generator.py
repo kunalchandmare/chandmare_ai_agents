@@ -143,28 +143,30 @@ import sys
 
 
 def test_cli_init_mode_creates_sample_files(tmp_path):
-    """generate <project_path> without --config/--pipeline creates sample files only."""
+    """generate <project_path> without --config/--pipeline creates .yaml.sample files only."""
     project = tmp_path / "new_project"
     result = subprocess.run(
         [sys.executable, "-m", "mlflow_pipeline_template.cli", "generate", str(project)],
         capture_output=True, text=True,
     )
     assert result.returncode == 0
-    assert (project / "config.yaml").exists()
-    assert (project / "pipeline.yaml").exists()
-    # Should NOT generate pipeline files
+    assert (project / "config.yaml.sample").exists()
+    assert (project / "pipeline.yaml.sample").exists()
+    # Should NOT create .yaml files or generate pipeline
+    assert not (project / "config.yaml").exists()
+    assert not (project / "pipeline.yaml").exists()
     assert not (project / "main.py").exists()
     assert not (project / "MLproject").exists()
     assert "Sample files created" in result.stdout
 
 
 def test_cli_init_mode_does_not_overwrite_existing(tmp_path):
-    """Re-running init mode does not overwrite user-edited files."""
+    """Re-running init mode does not overwrite user-edited .yaml.sample files."""
     project = tmp_path / "existing"
     project.mkdir()
-    config = project / "config.yaml"
+    config = project / "config.yaml.sample"
     config.write_text("project_name: my_custom\n", encoding="utf-8")
-    pipeline = project / "pipeline.yaml"
+    pipeline = project / "pipeline.yaml.sample"
     pipeline.write_text("steps: {}\ncomponents: {}\n", encoding="utf-8")
 
     result = subprocess.run(
