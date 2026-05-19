@@ -7,45 +7,35 @@ Generates a fully structured MLflow + Hydra pipeline project from two user-provi
 ## Installation
 
 ```bash
-pip install chandmare-mlflow-pipeline-template
-```
-
-Or install from source:
-```bash
-cd packages/mlflow_pipeline_template
-pip install -e .
+pip install -e /path/to/packages/mlflow_pipeline_template
 ```
 
 ---
 
 ## How it works
 
-1. User creates **`config.yaml`** (project settings) and **`pipeline.yaml`** (step/component definitions)
-2. Run: `mlflow-pipeline-template generate <output_path>`
-3. Agent generates the full ML pipeline project
-4. `create_env_agent` runs automatically (if installed) to produce all `conda.yml` files
+1. Run: `mlflow-pipeline-template generate <project_path>` — creates sample `config.yaml.sample` and `pipeline.yaml.sample` in the project folder
+2. User edits both files for their project
+3. Run: `mlflow-pipeline-template generate <project_path> --config <path> --pipeline <path>` — generates the full ML pipeline (Path to .yaml or .yml)
 
-**Input:** `config.yaml` + `pipeline.yaml`  
-**Output:** Ready-to-implement MLflow pipeline project
+**Init mode (no --config/--pipeline):** creates sample YAML files for user to edit  
+**Generate mode (with --config and --pipeline):** generates the full project structure
 
 ---
 
 ## Usage
 
 ```bash
-# 1. Create your config files (see *.sample files for reference)
-cp config.yaml.sample config.yaml
-cp pipeline.yaml.sample pipeline.yaml
-# Edit both files for your project
-
-# 2. Generate the project
+# 1. Init mode: generate sample config and pipeline files
 mlflow-pipeline-template generate ./my_project
 
-# Or specify custom paths for config files
-mlflow-pipeline-template generate ./my_project --config my_config.yaml --pipeline my_pipeline.yaml
+# 2. Edit config.yaml and pipeline.yaml in ./my_project
 
-# 3. Implement your logic in each run.py
-# 4. Run the pipeline
+# 3. Generate mode: build full pipeline from edited files (must have .yaml extension)
+mlflow-pipeline-template generate ./my_project --config ./my_project/config.yaml --pipeline ./my_project/pipeline.yaml
+
+# 4. Implement your logic in each run.py
+# 5. Run the pipeline
 cd my_project
 mlflow run . -P steps=all
 ```
@@ -205,32 +195,17 @@ Does this step need to know column names, business thresholds, or model details?
 
 ---
 
-## Usage
-
-```bash
-# 1. Create your config files (see *.sample files for reference)
-cp config.yaml.sample config.yaml
-cp pipeline.yaml.sample pipeline.yaml
-# Edit both files for your project
-
-# 2. Generate the project
-mlflow-pipeline-template generate ./my_project
-
-# 3. Implement your logic in each run.py
-# 4. Run the pipeline
-cd my_project
-mlflow run . -P steps=all
-```
-
----
 
 ## Adding steps/components later
 
-1. Add the definition to `pipeline.yaml`
-2. Re-run: `mlflow-pipeline-template generate ./my_project`
-   (existing `run.py` files are NOT overwritten if they already exist)
+1. Add the new step/component definition to `pipeline.yaml`
+2. Re-run: `mlflow-pipeline-template generate ./my_project --config ./my_project/config.yaml --pipeline ./my_project/pipeline.yaml`
 3. Implement logic in the new `run.py`
-4. Run `create_env_agent` to generate `conda.yml`
+
+**What happens on re-run:**
+- New steps/components → folders and files are generated
+- Existing steps (where `run.py` already exists) → **skipped**, your code is never overwritten
+- Root files (`main.py`, `MLproject`) → **regenerated** to include the new steps
 
 ---
 

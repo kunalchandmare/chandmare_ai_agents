@@ -20,5 +20,5 @@ mlflow-pipeline-template = "mlflow_pipeline_template.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-mlflow_pipeline_template = ["template/**/*", "_blueprints/**/*"]
+mlflow_pipeline_template = ["template/**/*", "*.sample"]
 
