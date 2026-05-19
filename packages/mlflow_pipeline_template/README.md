@@ -14,22 +14,22 @@ pip install -e /path/to/packages/mlflow_pipeline_template
 
 ## How it works
 
-1. Run: `mlflow-pipeline-template generate <project_path>` — creates sample `config.yaml.sample` and `pipeline.yaml.sample` in the project folder
-2. User edits both files for their project
-3. Run: `mlflow-pipeline-template generate <project_path> --config <path> --pipeline <path>` — generates the full ML pipeline (Path to .yaml or .yml)
+1. Run: `mlflow-pipeline-template generate <project_path>` — creates `config.yaml.sample` and `pipeline.yaml.sample` in the project folder
+2. User renames them to `.yaml` and edits for their project
+3. Run: `mlflow-pipeline-template generate <project_path> --config <path> --pipeline <path>` — generates the full ML pipeline
 
-**Init mode (no --config/--pipeline):** creates sample YAML files for user to edit  
-**Generate mode (with --config and --pipeline):** generates the full project structure
+**Init mode (no --config/--pipeline):** creates `.yaml.sample` files as reference for user to edit  
+**Generate mode (with --config and --pipeline):** parses `.yaml` files and generates the full project structure
 
 ---
 
 ## Usage
 
 ```bash
-# 1. Init mode: generate sample config and pipeline files
+# 1. Init mode: generate sample files (.yaml.sample)
 mlflow-pipeline-template generate ./my_project
 
-# 2. Edit config.yaml and pipeline.yaml in ./my_project
+# 2. Rename and edit: config.yaml.sample → config.yaml, pipeline.yaml.sample → pipeline.yaml
 
 # 3. Generate mode: build full pipeline from edited files (must have .yaml extension)
 mlflow-pipeline-template generate ./my_project --config ./my_project/config.yaml --pipeline ./my_project/pipeline.yaml

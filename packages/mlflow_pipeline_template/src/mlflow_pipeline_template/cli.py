@@ -76,8 +76,8 @@ def main():
             return 0
 
         # Otherwise → init mode: copy sample files for user to edit
-        config_path = project_path / "config.yaml"
-        pipeline_path = project_path / "pipeline.yaml"
+        config_path = project_path / "config.yaml.sample"
+        pipeline_path = project_path / "pipeline.yaml.sample"
 
         if not config_path.exists():
             sample = _find_sample("config.yaml.sample")
@@ -98,8 +98,8 @@ def main():
                 sys.exit(1)
 
         print(f"\nSample files created in: {project_path}")
-        print("Edit config.yaml and pipeline.yaml, then re-run with:")
-        print(f"  mlflow-pipeline-template generate {project_path} --config {config_path} --pipeline {pipeline_path}")
+        print("Rename and edit them, then re-run with:")
+        print(f"mlflow-pipeline-template generate {project_path} --config {project_path / 'config.yaml'} --pipeline {project_path / 'pipeline.yaml'}")
         return 0
 
     parser.print_help()
