@@ -135,3 +135,105 @@ def test_optional_argument_has_default_in_mlproject(project_dir):
     mlproject = (project_dir / "src" / "training" / "MLproject").read_text(encoding="utf-8")
     assert "default:" in mlproject
 
+
+# === CLI use case tests ===
+
+import subprocess
+import sys
+
+
+def test_cli_init_mode_creates_sample_files(tmp_path):
+    """generate <project_path> without --config/--pipeline creates sample files only."""
+    project = tmp_path / "new_project"
+    result = subprocess.run(
+        [sys.executable, "-m", "mlflow_pipeline_template.cli", "generate", str(project)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert (project / "config.yaml").exists()
+    assert (project / "pipeline.yaml").exists()
+    # Should NOT generate pipeline files
+    assert not (project / "main.py").exists()
+    assert not (project / "MLproject").exists()
+    assert "Sample files created" in result.stdout
+
+
+def test_cli_init_mode_does_not_overwrite_existing(tmp_path):
+    """Re-running init mode does not overwrite user-edited files."""
+    project = tmp_path / "existing"
+    project.mkdir()
+    config = project / "config.yaml"
+    config.write_text("project_name: my_custom\n", encoding="utf-8")
+    pipeline = project / "pipeline.yaml"
+    pipeline.write_text("steps: {}\ncomponents: {}\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "mlflow_pipeline_template.cli", "generate", str(project)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    # Original content preserved
+    assert config.read_text(encoding="utf-8") == "project_name: my_custom\n"
+
+
+def test_cli_generate_mode_with_config_and_pipeline(project_dir):
+    """generate with --config and --pipeline produces full pipeline."""
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "mlflow_pipeline_template.cli", "generate",
+            str(project_dir),
+            "--config", str(project_dir / "config.yaml"),
+            "--pipeline", str(project_dir / "pipeline.yaml"),
+        ],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert "Done!" in result.stdout
+    assert (project_dir / "main.py").exists()
+    assert (project_dir / "src" / "download" / "run.py").exists()
+
+
+def test_cli_generate_mode_missing_config_errors(tmp_path):
+    """generate with --config pointing to missing file exits with error."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "mlflow_pipeline_template.cli", "generate",
+            str(project),
+            "--config", str(tmp_path / "nonexistent.yaml"),
+            "--pipeline", str(tmp_path / "also_missing.yaml"),
+        ],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "Error" in result.stderr
+
+
+def test_cli_no_command_shows_help():
+    """Running without subcommand shows help."""
+    result = subprocess.run(
+        [sys.executable, "-m", "mlflow_pipeline_template.cli"],
+        capture_output=True, text=True,
+    )
+    assert "generate" in result.stdout or "usage" in result.stdout.lower()
+
+
+def test_cli_rejects_non_yaml_extension(tmp_path):
+    """Config and pipeline files must have .yaml extension."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    bad_config = tmp_path / "config.json"
+    bad_config.write_text("{}", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "mlflow_pipeline_template.cli", "generate",
+            str(project),
+            "--config", str(bad_config),
+            "--pipeline", str(tmp_path / "pipeline.yaml"),
+        ],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert ".yaml" in result.stderr

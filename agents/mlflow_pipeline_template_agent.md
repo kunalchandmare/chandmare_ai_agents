@@ -9,18 +9,23 @@
 ## Command
 
 ```bash
-# User creates project folder with config.yaml and pipeline.yaml inside, then runs:
+# Init mode: creates sample config.yaml and pipeline.yaml in project folder
 mlflow-pipeline-template generate <project_path>
 
-# Or specify custom file paths:
+# Generate mode: generates full pipeline (config.yaml and pipeline.yaml must exist)
 mlflow-pipeline-template generate <project_path> --config <path> --pipeline <path>
 ```
+
+### Behavior
+
+- **Only `project_path` given (no `--config`/`--pipeline`)** → creates project folder with sample `config.yaml` and `pipeline.yaml` for user to edit. Does NOT generate the pipeline.
+- **`--config` and `--pipeline` given** → parses both files and generates the full MLflow pipeline structure in `project_path`.
 
 ## Options
 
 - `<project_path>`: Project directory that contains `config.yaml` and `pipeline.yaml` (required)
-- `--config <path>`: Path to project config YAML (default: `<project_path>/config.yaml`)
-- `--pipeline <path>`: Path to pipeline definition YAML (default: `<project_path>/pipeline.yaml`)
+- `--config <path>`: Path to project config YAML (must have `.yaml` or `.yml` extension)
+- `--pipeline <path>`: Path to pipeline definition YAML (must have `.yaml` or `.yml` extension)
 
 ## Scope
 
@@ -76,6 +81,7 @@ All generation happens locally from the two input YAML files.
 
 ### config.yaml
 
+- File must have `.yaml` or `.yml` extension
 - `project_name` must be a non-empty string
 - `artifact_backend` must be one of: `mlflow`, `dvc`, `wandb`
 - If `artifact_backend: wandb`, `wandb_entity` must be non-empty
@@ -83,6 +89,7 @@ All generation happens locally from the two input YAML files.
 
 ### pipeline.yaml
 
+- File must have `.yaml` or `.yml` extension
 - Must contain at least one key under `steps:` or `components:`
 - Each step/component must have a `description` string
 - Each argument must have `type` (any valid Python type, e.g. `str`, `int`, `float`, `bool`, `list`, `dict`) and `description`
