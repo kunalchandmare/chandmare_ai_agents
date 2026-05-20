@@ -27,6 +27,9 @@ def generate_project(config_path: Path, pipeline_path: Path, output_path: Path) 
     # 1. Render root template files (main.py, MLproject)
     _render_root_templates(config, pipeline, output_path)
 
+    # 2. Generate params.yaml with default argument values for each step/component
+    _generate_params_yaml(pipeline, output_path, config)
+
     # 2. Generate src/<step>/ folders from pipeline.yaml steps
     steps = pipeline.get("steps", {})
     if steps:
@@ -54,7 +57,12 @@ def generate_project(config_path: Path, pipeline_path: Path, output_path: Path) 
         )
 
 
-    print(f"Generated {len(steps)} steps and {len(components)} components")
+    backend = config.get("artifact_backend", "mlflow")
+    print(f"Generated {len(steps)} steps and {len(components)} components (artifact_backend: {backend})")
+    if steps:
+        print(f"  Steps: {', '.join(steps.keys())}")
+    if components:
+        print(f"  Components: {', '.join(components.keys())}")
 
 
 def _render_root_templates(config: dict, pipeline: dict, output_path: Path) -> None:
@@ -118,3 +126,34 @@ def _generate_step_or_component(
         (output_dir / out_name).write_text(rendered, encoding="utf-8")
 
 
+def _generate_params_yaml(pipeline: dict, output_path: Path, config: dict) -> None:
+    """Generate params.yaml with default argument values for each step and component."""
+    # Main section includes all config.yaml parameters plus experiment_name
+    main_params = {
+        "steps": "all",
+        "experiment_name": "dev",
+    }
+    for key, value in config.items():
+        if key not in ("project_slug",):  # skip derived keys
+            main_params[key] = value
+
+    params = {"main": main_params}
+
+    for section in ("steps", "components"):
+        for name, cfg in pipeline.get(section, {}).items():
+            if not cfg:
+                continue
+            arguments = cfg.get("arguments", {})
+            if not arguments:
+                params[name] = {}
+                continue
+            step_params = {}
+            for arg_name, arg_cfg in arguments.items():
+                step_params[arg_name] = arg_cfg.get("default", "")
+            params[name] = step_params
+
+    params_path = output_path / "params.yaml"
+    params_path.write_text(
+        yaml.dump(params, default_flow_style=False, sort_keys=False),
+        encoding="utf-8",
+    )

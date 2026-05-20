@@ -4,6 +4,7 @@ CLI entry point for mlflow-pipeline-template.
 Usage:
     mlflow-pipeline-template generate <project_path>
     mlflow-pipeline-template generate <project_path> --config config.yaml --pipeline pipeline.yaml
+    mlflow-pipeline-template clean <project_path>
 """
 import argparse
 import shutil
@@ -28,6 +29,34 @@ def _find_sample(name: str) -> Path:
     return Path("")
 
 
+# Generated artifacts that clean command removes
+_GENERATED_FILES = ("main.py", "MLproject", "params.yaml")
+_GENERATED_DIRS = ("src", "components")
+
+
+def _clean_project(project_path: Path) -> None:
+    """Remove all generated artifacts from a project directory."""
+    removed = []
+
+    for fname in _GENERATED_FILES:
+        fpath = project_path / fname
+        if fpath.exists():
+            fpath.unlink()
+            removed.append(fname)
+
+    for dname in _GENERATED_DIRS:
+        dpath = project_path / dname
+        if dpath.exists():
+            shutil.rmtree(dpath)
+            removed.append(f"{dname}/")
+
+    if removed:
+        print(f"Cleaned: {', '.join(removed)}")
+    else:
+        print("Nothing to clean.")
+    print(f"Preserved: config.yaml, pipeline.yaml, *.sample files")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="mlflow-pipeline-template",
@@ -46,7 +75,18 @@ def main():
         help="Path to pipeline definition file (default: <project_path>/pipeline.yaml)"
     )
 
+    clean_parser = subparsers.add_parser("clean", help="Remove all generated artifacts from project")
+    clean_parser.add_argument("project_path", help="Project directory to clean")
+
     args = parser.parse_args()
+
+    if args.command == "clean":
+        project_path = Path(args.project_path)
+        if not project_path.exists():
+            print(f"Error: project directory not found: {project_path}", file=sys.stderr)
+            sys.exit(1)
+        _clean_project(project_path)
+        return 0
 
     if args.command == "generate":
         project_path = Path(args.project_path)

@@ -17,4 +17,7 @@ mlflow_version: "2.14.1"
 
 # --- Required when artifact_backend = "dvc" ---
 # dvc_remote: "s3://my-bucket/artifacts"
+# NOTE: On Windows, use forward slashes or single quotes for local paths:
+#   dvc_remote: 'C:\Data\my_artifacts'   ← single quotes (no escaping)
+#   dvc_remote: "C:/Data/my_artifacts"   ← forward slashes in double quotes
 

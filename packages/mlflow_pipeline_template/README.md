@@ -38,6 +38,9 @@ mlflow-pipeline-template generate ./my_project --config ./my_project/config.yaml
 # 5. Run the pipeline
 cd my_project
 mlflow run . -P steps=all
+
+# Clean: remove all generated artifacts (preserves config.yaml, pipeline.yaml)
+mlflow-pipeline-template clean ./my_project
 ```
 
 ## `config.yaml` — Parameter Reference
