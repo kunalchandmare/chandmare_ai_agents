@@ -1,39 +1,30 @@
 """
 Pipeline orchestrator for {{ project_name }}.
-Driven by Hydra config (config.yaml). Run with:
+Driven by Hydra config (params.yaml). Run with:
 
     mlflow run . -P steps=all
-    mlflow run . -P steps=ingest,clean
-    mlflow run . -P hydra_options="etl.min_price=10"
+    mlflow run . -P steps=download,training
+    mlflow run . -P hydra_options="training.epochs=20"
 """
 import os
 import mlflow
 import hydra
-import yaml
 from omegaconf import DictConfig
-from pathlib import Path
 {% if artifact_backend == 'wandb' %}
 import wandb
 {% endif %}
 
-
-def load_pipeline_steps():
-    """Load step and component names from pipeline.yaml."""
-    for name in ("pipeline.yaml", "pipeline.yml"):
-        pipeline_file = Path(__file__).parent / name
-        if pipeline_file.exists():
-            pipeline = yaml.safe_load(pipeline_file.read_text(encoding="utf-8")) or {}
-            steps = list(pipeline.get("steps", {}).keys())
-            components = list(pipeline.get("components", {}).keys())
-            return steps, components
-    return [], []
+_steps = [
+{%- for name in step_names %}
+    "{{ name }}",
+{%- endfor %}
+{%- for name in component_names %}
+    "{{ name }}",
+{%- endfor %}
+]
 
 
-_src_steps, _component_steps = load_pipeline_steps()
-_steps = _src_steps + _component_steps
-
-
-@hydra.main(version_base=None, config_name="config", config_path=".")
+@hydra.main(version_base=None, config_name="params", config_path=".")
 def go(config: DictConfig):
 {% if artifact_backend == 'wandb' %}
     os.environ["WANDB_PROJECT"] = config["main"]["project_name"]
@@ -44,27 +35,35 @@ def go(config: DictConfig):
     active_steps = steps_par.split(",") if steps_par != "all" else _steps
 
     # ── src/ steps ─────────────────────────────────────────────────────────────
-    for step in _src_steps:
-        if step in active_steps:
-            step_config = dict(config.get(step, {}))
-            mlflow.run(
-                os.path.join(hydra.utils.get_original_cwd(), "src", step),
-                "main",
-                env_manager="local",
-                parameters={k: str(v) for k, v in step_config.items() if v != ""},
-            )
+{% for step_name, step_cfg in steps.items() %}
+    if "{{ step_name }}" in active_steps:
+        mlflow.run(
+            os.path.join(hydra.utils.get_original_cwd(), "src", "{{ step_name }}"),
+            "main",
+            env_manager="local",
+            parameters={
+{% for arg_name, arg_cfg in (step_cfg.get('arguments', {}) or {}).items() %}
+                "{{ arg_name }}": str(config["{{ step_name }}"]["{{ arg_name }}"]),
+{% endfor %}
+            },
+        )
 
-    # ── components/ steps ──────────────────────────────────────────────────────
-    for comp in _component_steps:
-        if comp in active_steps:
-            comp_config = dict(config.get(comp, {}))
-            mlflow.run(
-                os.path.join(hydra.utils.get_original_cwd(), "components", comp),
-                "main",
-                env_manager="local",
-                parameters={k: str(v) for k, v in comp_config.items() if v != ""},
-            )
+{% endfor %}
+    # ── components/ ────────────────────────────────────────────────────────────
+{% for comp_name, comp_cfg in components.items() %}
+    if "{{ comp_name }}" in active_steps:
+        mlflow.run(
+            os.path.join(hydra.utils.get_original_cwd(), "components", "{{ comp_name }}"),
+            "main",
+            env_manager="local",
+            parameters={
+{% for arg_name, arg_cfg in (comp_cfg.get('arguments', {}) or {}).items() %}
+                "{{ arg_name }}": str(config["{{ comp_name }}"]["{{ arg_name }}"]),
+{% endfor %}
+            },
+        )
 
+{% endfor %}
 
 if __name__ == "__main__":
     go()

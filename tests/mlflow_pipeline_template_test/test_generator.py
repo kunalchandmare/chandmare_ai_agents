@@ -239,3 +239,64 @@ def test_cli_rejects_non_yaml_extension(tmp_path):
     )
     assert result.returncode != 0
     assert ".yaml" in result.stderr
+
+
+def test_params_yaml_generated_with_defaults(project_dir):
+    """params.yaml is generated with default argument values for each step."""
+    generate_project(
+        project_dir / "config.yaml",
+        project_dir / "pipeline.yaml",
+        project_dir,
+    )
+    params_path = project_dir / "params.yaml"
+    assert params_path.exists()
+
+    import yaml
+    params = yaml.safe_load(params_path.read_text(encoding="utf-8"))
+
+    # Check main section exists with config params and experiment_name
+    assert "main" in params
+    assert params["main"]["steps"] == "all"
+    assert params["main"]["experiment_name"] == "dev"
+    assert params["main"]["project_name"] == "image_classifier"
+    assert params["main"]["artifact_backend"] == "wandb"
+    assert params["main"]["wandb_entity"] == "myteam"
+
+    # Check step defaults from pipeline.yaml
+    assert "split" in params
+    assert params["split"]["test_size"] == 0.2
+    assert params["split"]["random_seed"] == 42
+
+    # Required args with no default should be empty string
+    assert params["download"]["source_url"] == ""
+
+
+def test_cli_clean_removes_generated_artifacts(project_dir):
+    """clean command removes generated files but preserves config/pipeline."""
+    generate_project(
+        project_dir / "config.yaml",
+        project_dir / "pipeline.yaml",
+        project_dir,
+    )
+    # Verify generated files exist
+    assert (project_dir / "main.py").exists()
+    assert (project_dir / "src").exists()
+
+    result = subprocess.run(
+        [sys.executable, "-m", "mlflow_pipeline_template.cli", "clean", str(project_dir)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert "Cleaned" in result.stdout
+
+    # Generated artifacts removed
+    assert not (project_dir / "main.py").exists()
+    assert not (project_dir / "MLproject").exists()
+    assert not (project_dir / "params.yaml").exists()
+    assert not (project_dir / "src").exists()
+
+    # User files preserved
+    assert (project_dir / "config.yaml").exists()
+    assert (project_dir / "pipeline.yaml").exists()
+
+

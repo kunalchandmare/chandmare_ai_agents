@@ -77,7 +77,7 @@ if __name__ == "__main__":
     )
 {% else %}
     parser.add_argument(
-        "--{{ arg_name }}", type={{ arg_type }}, default={{ arg_cfg.get('default', 'None') | tojson }},
+        "--{{ arg_name }}", type={{ arg_type }}, default={{ arg_cfg.get('default', None) | tojson | replace('null', 'None') | replace('true', 'True') | replace('false', 'False') }},
         help="{{ arg_cfg.get('description', '') }}"
     )
 {% endif %}
