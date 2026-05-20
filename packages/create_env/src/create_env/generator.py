@@ -45,6 +45,62 @@ class ManifestGenerator:
                     f"Could not resolve version for package '{normalized_name}' (imported as '{import_name}')"
                 )
 
+    def resolve_versions_from_venv(self, venv_path: str) -> None:
+        """Resolve exact package versions from a .venv or virtualenv directory."""
+        import sys
+        venv = Path(venv_path)
+
+        # Determine pip/python executable path
+        if sys.platform == 'win32':
+            pip_exe = venv / 'Scripts' / 'pip.exe'
+            python_exe = venv / 'Scripts' / 'python.exe'
+        else:
+            pip_exe = venv / 'bin' / 'pip'
+            python_exe = venv / 'bin' / 'python'
+
+        if not pip_exe.exists():
+            self.warnings.append(f"pip not found in venv: {pip_exe}")
+            return
+
+        # Resolve python version
+        try:
+            result = subprocess.run(
+                [str(python_exe), '--version'],
+                capture_output=True, text=True, check=True,
+            )
+            parts = result.stdout.strip().split()
+            if len(parts) >= 2:
+                self.python_version = '.'.join(parts[1].split('.')[:2])
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            self.python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+
+        for import_name, package_name in self.resolved_imports.items():
+            normalized_name = self.normalize_package_name(package_name)
+            version = self._get_pip_version_from_venv(str(pip_exe), normalized_name)
+
+            if version:
+                self.packages_with_versions[normalized_name] = version
+            else:
+                self.missing_packages.append(normalized_name)
+                self.warnings.append(
+                    f"Could not resolve version for package '{normalized_name}' (imported as '{import_name}')"
+                )
+
+    @staticmethod
+    def _get_pip_version_from_venv(pip_exe: str, package_name: str) -> Optional[str]:
+        """Get package version using a specific pip executable."""
+        try:
+            result = subprocess.run(
+                [pip_exe, 'show', package_name],
+                capture_output=True, text=True, check=True,
+            )
+            for line in result.stdout.split('\n'):
+                if line.startswith('Version:'):
+                    return line.split('Version:')[1].strip()
+            return None
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return None
+
     def _resolve_python_version(self, env_name: Optional[str] = None) -> str:
         """Resolve the Python major.minor version from the target conda env or active interpreter."""
         try:

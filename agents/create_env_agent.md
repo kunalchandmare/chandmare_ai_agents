@@ -9,10 +9,10 @@
 ## Command
 
 ```bash
-python -m create_env scan <project_path>
-python -m create_env scan <project_path> --env-name <conda_env_name>
-python -m create_env scan <project_path> --extra-index-url <url>
-python -m create_env scan <project_path> --env-name <conda_env_name> --extra-index-url <url> [--extra-index-url <url> ...]
+create-env scan <project_path>
+create-env scan <project_path> --env-name <conda_env_name>
+create-env scan <project_path> --extra-index-url <url>
+create-env scan <project_path> --env-name <conda_env_name> --extra-index-url <url> [--extra-index-url <url> ...]
 ```
 
 ## Options

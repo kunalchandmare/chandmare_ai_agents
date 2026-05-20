@@ -24,7 +24,7 @@ class TestCreateEnvCLI(unittest.TestCase):
     def test_parser_creation(self):
         parser = self.cli._create_parser()
         self.assertIsNotNone(parser)
-        self.assertEqual(parser.prog, 'create_env')
+        self.assertEqual(parser.prog, 'create-env')
 
     def test_parse_scan_command_basic(self):
         parser = self.cli._create_parser()
