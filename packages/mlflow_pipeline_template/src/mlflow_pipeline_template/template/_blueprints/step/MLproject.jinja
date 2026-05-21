@@ -1,0 +1,20 @@
+name: {{ step_name }}
+conda_env: conda.yml
+
+entry_points:
+  main:
+    parameters:
+{% for arg_name, arg_cfg in arguments.items() %}
+      {{ arg_name }}:
+        description: "{{ arg_cfg.get('description', '') }}"
+        type: {% set t = arg_cfg.get('type', 'str') %}{% if t == 'str' %}string{% elif t == 'int' or t == 'float' %}float{% elif t == 'bool' %}string{% else %}{{ t }}{% endif %}
+{% if not arg_cfg.get('required', false) %}
+        default: "{{ arg_cfg.get('default', '') }}"
+{% endif %}
+{% endfor %}
+
+    command: >-
+      python run.py
+{% for arg_name in arguments.keys() %}
+        --{{ arg_name }} {{ '{' }}{{ arg_name }}{{ '}' }}
+{% endfor %}
