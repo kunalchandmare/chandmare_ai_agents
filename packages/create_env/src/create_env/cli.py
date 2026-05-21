@@ -36,9 +36,9 @@ class CreateEnvCLI:
     def _create_parser(self) -> argparse.ArgumentParser:
         """Create the argument parser."""
         parser = argparse.ArgumentParser(
-            prog='create-env',
+            prog='create_env',
             description='Scan local Python source files and create deterministic dependency manifests',
-            epilog='Run "create-env scan -h" for full options available on the scan command.'
+            epilog='Run "create_env scan -h" for full options available on the scan command.'
         )
 
         subparsers = parser.add_subparsers(dest='command', help='Available commands')
