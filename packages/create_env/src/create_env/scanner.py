@@ -92,6 +92,19 @@ class DependencyScanner:
             elif child.is_dir() and (child / '__init__.py').exists():
                 modules.add(child.name)
 
+        # Also treat parent directory names as local (e.g. scanning src/download/ → 'src' is local)
+        for parent in project_path.parents:
+            if parent == project_path:
+                break
+            if parent.name and (parent / '__init__.py').exists():
+                modules.add(parent.name)
+            # Common source directories are always local
+            if parent.name in ('src', 'lib', 'app', 'tests', 'test'):
+                modules.add(parent.name)
+
+        # The scan directory name itself is local
+        modules.add(project_path.name)
+
         return modules
 
     def _scan_file(self, file_path: Path) -> None:
@@ -167,6 +180,19 @@ class DependencyScanner:
         override_mapping = self._load_local_override_mapping()
 
         for import_name in sorted(self.found_imports):
+            # 1. Check override mapping first (highest priority)
+            override_mapped = self._lookup_mapping(override_mapping, import_name)
+            if override_mapped:
+                resolved[import_name] = self.normalize_package_name(override_mapped)
+                continue
+
+            # 2. Check packaged fallback mapping (resolves known ambiguities like mlflow, cv2)
+            fallback_mapped = self._lookup_mapping(packaged_mapping, import_name)
+            if fallback_mapped:
+                resolved[import_name] = self.normalize_package_name(fallback_mapped)
+                continue
+
+            # 3. Check importlib.metadata distributions (strict: only if exactly one match)
             candidates = self._get_distribution_candidates(import_to_distributions, import_name)
             if len(candidates) == 1:
                 resolved[import_name] = candidates[0]
@@ -174,20 +200,11 @@ class DependencyScanner:
             if len(candidates) > 1:
                 self.warnings.append(
                     f"Ambiguous distribution mapping for import '{import_name}': [{', '.join(candidates)}]. "
-                    "No package selected."
+                    "No package selected. Add explicit mapping to resolve."
                 )
                 continue
 
-            override_mapped = self._lookup_mapping(override_mapping, import_name)
-            if override_mapped:
-                resolved[import_name] = self.normalize_package_name(override_mapped)
-                continue
-
-            fallback_mapped = self._lookup_mapping(packaged_mapping, import_name)
-            if fallback_mapped:
-                resolved[import_name] = self.normalize_package_name(fallback_mapped)
-                continue
-
+            # 4. Unresolved
             self.warnings.append(
                 f"Unresolved import '{import_name}'. Add a mapping in local override file at "
                 f"{self.get_default_override_mapping_path()}."

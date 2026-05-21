@@ -30,7 +30,7 @@ pip install -e /path/to/packages/create_env
 ### Command
 
 ```bash
-python -m create_env scan <project_path> [OPTIONS]
+create-env scan <project_path> [OPTIONS]
 ```
 
 ### Arguments
@@ -51,25 +51,25 @@ python -m create_env scan <project_path> [OPTIONS]
 #### Scan local project
 
 ```bash
-python -m create_env scan /path/to/project
+create-env scan /path/to/project
 ```
 
 #### Scan with a specific conda environment
 
 ```bash
-python -m create_env scan /path/to/project --env-name myenv
+create-env scan /path/to/project --env-name myenv
 ```
 
 #### Scan with a custom extra package index (e.g. PyTorch CUDA wheels)
 
 ```bash
-python -m create_env scan /path/to/project --extra-index-url https://download.pytorch.org/whl/cu126
+create-env scan /path/to/project --extra-index-url https://download.pytorch.org/whl/cu126
 ```
 
 #### Scan with multiple extra indexes
 
 ```bash
-python -m create_env scan /path/to/project \
+create-env scan /path/to/project \
   --extra-index-url https://download.pytorch.org/whl/cu126 \
   --extra-index-url https://my-private-index.example.com/simple
 ```

@@ -36,9 +36,9 @@ class CreateEnvCLI:
     def _create_parser(self) -> argparse.ArgumentParser:
         """Create the argument parser."""
         parser = argparse.ArgumentParser(
-            prog='create_env',
+            prog='create-env',
             description='Scan local Python source files and create deterministic dependency manifests',
-            epilog='Run "create_env scan -h" for full options available on the scan command.'
+            epilog='Run "create-env scan -h" for full options available on the scan command.'
         )
 
         subparsers = parser.add_subparsers(dest='command', help='Available commands')
@@ -75,8 +75,14 @@ class CreateEnvCLI:
 
         generator = ManifestGenerator(resolved_imports, self.scanner.warnings)
 
-        print(f"Resolving versions from environment: {env_name or 'active'}")
-        generator.resolve_versions(env_name)
+        # Auto-detect environment: check for .venv in project or parent directories
+        venv_path = self._find_venv(project_path)
+        if venv_path:
+            print(f"Resolving versions from venv: {venv_path}")
+            generator.resolve_versions_from_venv(str(venv_path))
+        else:
+            print(f"Resolving versions from environment: {env_name or 'active'}")
+            generator.resolve_versions(env_name)
 
         print(f"Generating manifests in: {project_path}")
         generator.generate_all_manifests(
@@ -87,6 +93,24 @@ class CreateEnvCLI:
 
         print('Done!')
         return 0
+
+    @staticmethod
+    def _find_venv(project_path: Path) -> Optional[Path]:
+        """Auto-detect a .venv or venv directory in the project or its parents."""
+        search_path = project_path.resolve()
+        for _ in range(10):  # limit depth to avoid infinite traversal
+            for venv_name in ('.venv', 'venv'):
+                candidate = search_path / venv_name
+                if candidate.is_dir() and (
+                    (candidate / 'Scripts' / 'pip.exe').exists() or
+                    (candidate / 'bin' / 'pip').exists()
+                ):
+                    return candidate
+            parent = search_path.parent
+            if parent == search_path:
+                break
+            search_path = parent
+        return None
 
     def _confirm_action(self, prompt: str) -> bool:
         """Ask the user for explicit permission before performing local side effects."""
