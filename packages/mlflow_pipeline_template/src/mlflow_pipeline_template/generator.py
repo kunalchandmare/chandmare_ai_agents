@@ -110,11 +110,36 @@ def _generate_step_or_component(
         keep_trailing_newline=True,
     )
 
+    # Preprocess arguments for multiplicity and ensure 'description' exists
+    arguments = step_config.get("arguments", {})
+    processed_arguments = {}
+    for arg_name, arg_cfg in arguments.items():
+        if isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False):
+            # Ensure each sub-argument in 'args' has a description
+            args_list = []
+            for sub_arg in arg_cfg.get("args", []):
+                fixed_sub_arg = {}
+                for sub_name, sub_cfg in sub_arg.items():
+                    fixed_sub_cfg = dict(sub_cfg)
+                    if "description" not in fixed_sub_cfg:
+                        fixed_sub_cfg["description"] = ""
+                    fixed_sub_arg[sub_name] = fixed_sub_cfg
+                args_list.append(fixed_sub_arg)
+            processed_arguments[arg_name] = {
+                "multiplicity": True,
+                "multiplicity_count": arg_cfg.get("multiplicity_count", 1),
+                "args": args_list
+            }
+        else:
+            fixed_cfg = dict(arg_cfg)
+            if "description" not in fixed_cfg:
+                fixed_cfg["description"] = ""
+            processed_arguments[arg_name] = fixed_cfg
     ctx = {
         **config,
         "step_name": name,
         "description": step_config.get("description", ""),
-        "arguments": step_config.get("arguments", {}),
+        "arguments": processed_arguments,
     }
 
     for tmpl_path in sorted(blueprint_dir.iterdir()):
@@ -149,7 +174,31 @@ def _generate_params_yaml(pipeline: dict, output_path: Path, config: dict) -> No
                 continue
             step_params = {}
             for arg_name, arg_cfg in arguments.items():
-                step_params[arg_name] = arg_cfg.get("default", "")
+                # Multiplicity support
+                if isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False):
+                    count = arg_cfg.get("multiplicity_count", 1)
+                    args_list = []
+                    for sub_arg in arg_cfg.get("args", []):
+                        fixed_sub_arg = {}
+                        for sub_name, sub_cfg in sub_arg.items():
+                            fixed_sub_cfg = dict(sub_cfg)
+                            if "description" not in fixed_sub_cfg:
+                                fixed_sub_cfg["description"] = ""
+                            fixed_sub_arg[sub_name] = fixed_sub_cfg
+                        args_list.append(fixed_sub_arg)
+                    # For params.yaml, store as a list of dicts with defaults
+                    step_params[arg_name] = []
+                    for i in range(count):
+                        entry = {}
+                        for sub_arg in args_list:
+                            for sub_name, sub_cfg in sub_arg.items():
+                                entry[sub_name] = sub_cfg.get("default", "")
+                        step_params[arg_name].append(entry)
+                else:
+                    fixed_cfg = dict(arg_cfg)
+                    if "description" not in fixed_cfg:
+                        fixed_cfg["description"] = ""
+                    step_params[arg_name] = fixed_cfg.get("default", "")
             params[name] = step_params
 
     params_path = output_path / "params.yaml"

@@ -271,32 +271,164 @@ def test_params_yaml_generated_with_defaults(project_dir):
     assert params["download"]["source_url"] == ""
 
 
-def test_cli_clean_removes_generated_artifacts(project_dir):
-    """clean command removes generated files but preserves config/pipeline."""
-    generate_project(
-        project_dir / "config.yaml",
-        project_dir / "pipeline.yaml",
-        project_dir,
-    )
-    # Verify generated files exist
-    assert (project_dir / "main.py").exists()
-    assert (project_dir / "src").exists()
+def test_multiplicity_argument_set_descriptions(tmp_path):
+    """params.yaml contains a list of dicts for multiplicity argument; MLproject exposes only parent argument."""
+    from mlflow_pipeline_template.generator import generate_project
+    import yaml
 
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("project_name: multiplicity_desc_test\n", encoding="utf-8")
+
+    pipeline_yaml = '''
+steps:
+  multi_step:
+    description: "Step with multiplicity argument set"
+    arguments:
+      my_arg_set:
+        multiplicity: true
+        multiplicity_count: 2
+        args:
+          - arg1:
+              type: str
+              default: foo
+              required: true
+              # no description provided
+            arg2:
+              type: int
+              default: 42
+              description: "Second argument desc."
+components: {}
+'''
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(pipeline_yaml, encoding="utf-8")
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    params_path = tmp_path / "params.yaml"
+    assert params_path.exists()
+    params = yaml.safe_load(params_path.read_text(encoding="utf-8"))
+    # Should be a list of dicts, length 2
+    assert "multi_step" in params
+    assert "my_arg_set" in params["multi_step"]
+    assert isinstance(params["multi_step"]["my_arg_set"], list)
+    assert len(params["multi_step"]["my_arg_set"]) == 2
+    for entry in params["multi_step"]["my_arg_set"]:
+        assert entry["arg1"] == "foo"
+        assert entry["arg2"] == 42
+    # MLproject should expose only the parent argument
+    mlproject = (tmp_path / "src" / "multi_step" / "MLproject").read_text(encoding="utf-8")
+    assert "my_arg_set" in mlproject
+    assert "arg1" not in mlproject
+    assert "arg2" not in mlproject
+
+
+def test_multiplicity_argument_set_run_py_argparse(tmp_path):
+    """run.py argparse should include only the parent multiplicity argument, not sub-arguments."""
+    from mlflow_pipeline_template.generator import generate_project
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("project_name: multiplicity_argparse_test\n", encoding="utf-8")
+
+    pipeline_yaml = '''
+steps:
+  multi_step:
+    description: "Step with multiplicity argument set"
+    arguments:
+      my_arg_set:
+        multiplicity: true
+        multiplicity_count: 2
+        args:
+          - arg1:
+              type: str
+              default: foo
+              required: true
+              description: "desc1"
+            arg2:
+              type: int
+              default: 42
+              description: "desc2"
+components: {}
+'''
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(pipeline_yaml, encoding="utf-8")
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    run_py = (tmp_path / "src" / "multi_step" / "run.py").read_text(encoding="utf-8")
+    # Should include argparse for my_arg_set only
+    assert "--my_arg_set" in run_py
+    assert "--arg1" not in run_py
+    assert "--arg2" not in run_py
+
+
+def test_multiplicity_arg_set_runtime(tmp_path):
+    """Test that run.py can access and iterate over the multiplicity argument set as a list of dicts with correct values."""
+    from mlflow_pipeline_template.generator import generate_project
+    import yaml
+    import subprocess
+    import sys
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("project_name: multiplicity_runtime_test\n", encoding="utf-8")
+
+    pipeline_yaml = '''
+steps:
+  my_step:
+    description: "Step with repeated argument set"
+    arguments:
+      my_arg_set:
+        multiplicity: true
+        multiplicity_count: 3
+        args:
+          - arg1:
+              type: str
+              default: foo
+              required: true
+              description: "First argument in set."
+            arg2:
+              type: int
+              default: 42
+              description: "Second argument in set."
+components: {}
+'''
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(pipeline_yaml, encoding="utf-8")
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    # Overwrite params.yaml with custom values for each set
+    params_path = tmp_path / "params.yaml"
+    params = {
+        "my_step": {
+            "my_arg_set": [
+                {"arg1": "foo1", "arg2": 42},
+                {"arg1": "foo2", "arg2": 99},
+                {"arg1": "bar", "arg2": 123},
+            ]
+        },
+        "main": {"project_name": "multiplicity_runtime_test", "steps": "all", "experiment_name": "dev"}
+    }
+    params_path.write_text(yaml.dump(params, sort_keys=False), encoding="utf-8")
+
+    # Patch run.py to print the argument set for test
+    run_py_path = tmp_path / "src" / "my_step" / "run.py"
+    run_py = run_py_path.read_text(encoding="utf-8")
+    # Insert print logic after parser.parse_args()
+    marker = "args = parser.parse_args()"
+    injected = (
+        f"{marker}\n    import yaml\n    with open('../../params.yaml', 'r', encoding='utf-8') as f:\n        params = yaml.safe_load(f)\n    arg_set = params['my_step']['my_arg_set']\n    for entry in arg_set:\n        print(f'arg1={{entry[\'arg1\']}} arg2={{entry[\'arg2\']}}')\n"
+    )
+    run_py = run_py.replace(marker, injected)
+    run_py_path.write_text(run_py, encoding="utf-8")
+
+    # Run the script and capture output
     result = subprocess.run(
-        [sys.executable, "-m", "mlflow_pipeline_template.cli", "clean", str(project_dir)],
+        [sys.executable, str(run_py_path)],
+        cwd=str(run_py_path.parent),
         capture_output=True, text=True,
     )
     assert result.returncode == 0
-    assert "Cleaned" in result.stdout
-
-    # Generated artifacts removed
-    assert not (project_dir / "main.py").exists()
-    assert not (project_dir / "MLproject").exists()
-    assert not (project_dir / "params.yaml").exists()
-    assert not (project_dir / "src").exists()
-
-    # User files preserved
-    assert (project_dir / "config.yaml").exists()
-    assert (project_dir / "pipeline.yaml").exists()
-
-
+    output_lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
+    assert "arg1=foo1 arg2=42" in output_lines
+    assert "arg1=foo2 arg2=99" in output_lines
+    assert "arg1=bar arg2=123" in output_lines

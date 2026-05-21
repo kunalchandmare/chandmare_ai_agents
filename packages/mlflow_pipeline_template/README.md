@@ -99,12 +99,14 @@ components:
 
 Each argument under `arguments:` has the following fields:
 
-| Field | Type | Required | Default | Description |
-|---|---|---|---|---|
-| `type` | str | **yes** | — | Python type: `str`, `int`, `float`, `bool` |
-| `default` | any | no | — | Default value. If omitted, argument has no default. |
-| `required` | bool | no | `false` | If `true`, argument must be provided at runtime (no default). |
-| `description` | str | no | `""` | Help text for argparse and documentation. |
+| Field        | Type | Required | Default | Description |
+|---           |---   |---       |---      |---|
+| `type`       | str  | **yes**  | —       | Python type: `str`, `int`, `float`, `bool` |
+| `default`    | any  | no       | —       | Default value. If omitted, argument has no default. |
+| `required`   | bool | no       | `false` | If `true`, argument must be provided at runtime (no default). |
+| `description`| str  | always   | `""`   | Help text for argparse and documentation. Always present; defaults to empty string if not provided. |
+
+> **Note:** The `description` field is always present for every argument (including multiplicity sets and sub-arguments). If not provided in your YAML, it will default to an empty string (`""`).
 
 ### How arguments propagate
 
@@ -161,6 +163,55 @@ Does this step need to know column names, business thresholds, or model details?
 ├── YES → define under steps: (goes to src/)
 └── NO  → define under components: (goes to components/)
 ```
+
+---
+
+## Multiplicity Argument Sets
+
+You can define a set of arguments as a list using the `multiplicity` feature **in your `pipeline.yaml` under the `arguments` section**. This is useful when you want to specify a repeated group of arguments (e.g., multiple input sources, repeated parameter blocks, etc.).
+
+**pipeline.yaml Example:**
+
+```yaml
+steps:
+  my_step:
+    description: "Step with repeated argument set"
+    arguments:
+      my_arg_set:
+        multiplicity: true
+        multiplicity_count: 3
+        args:
+          - arg1:
+              type: str
+              default: foo
+              required: true
+              description: "First argument in set."
+            arg2:
+              type: int
+              default: 42
+              description: "Second argument in set."
+```
+
+- Only the parent group (`my_arg_set`) is named.
+- `multiplicity: true` enables the feature.
+- `multiplicity_count` sets the number of repeated sets.
+- `args` is a list of argument definitions (each entry is a dict of argument names and their schemas).
+
+**params.yaml Example (result):**
+
+```yaml
+my_step:
+  my_arg_set:
+    - arg1: foo1  # User can edit each set individually
+      arg2: 42
+    - arg1: foo2
+      arg2: 99
+    - arg1: bar
+      arg2: 123
+```
+
+- In `params.yaml`, the multiplicity argument appears as a list of dicts, each with the specified defaults (users can edit each set as needed).
+- The generated code and MLproject will reflect this structure for runtime use (the parent argument is passed as a single grouped parameter).
 
 ---
 
@@ -223,3 +274,4 @@ Does this step need to know column names, business thresholds, or model details?
 | `conda.yml` | `create_env_agent` | Never manually — always regenerated |
 | `main.py` | Agent (generated) | User (wire step execution order) |
 | `AGENTS.md` | Agent (generated) | Never — source of truth for all agents |
+
