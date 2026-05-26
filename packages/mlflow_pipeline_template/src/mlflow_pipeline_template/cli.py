@@ -11,7 +11,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from .generator import generate_project
+from .generator import generate_project, clean_project
 
 _PACKAGE_DIR = Path(__file__).parent
 
@@ -32,29 +32,6 @@ def _find_sample(name: str) -> Path:
 # Generated artifacts that clean command removes
 _GENERATED_FILES = ("main.py", "MLproject", "params.yaml")
 _GENERATED_DIRS = ("src", "components")
-
-
-def _clean_project(project_path: Path) -> None:
-    """Remove all generated artifacts from a project directory."""
-    removed = []
-
-    for fname in _GENERATED_FILES:
-        fpath = project_path / fname
-        if fpath.exists():
-            fpath.unlink()
-            removed.append(fname)
-
-    for dname in _GENERATED_DIRS:
-        dpath = project_path / dname
-        if dpath.exists():
-            shutil.rmtree(dpath)
-            removed.append(f"{dname}/")
-
-    if removed:
-        print(f"Cleaned: {', '.join(removed)}")
-    else:
-        print("Nothing to clean.")
-    print(f"Preserved: config.yaml, pipeline.yaml, *.sample files")
 
 
 def main():
@@ -85,7 +62,8 @@ def main():
         if not project_path.exists():
             print(f"Error: project directory not found: {project_path}", file=sys.stderr)
             sys.exit(1)
-        _clean_project(project_path)
+        # Use the generator's clean_project for advanced cleaning
+        clean_project(project_path)
         return 0
 
     if args.command == "generate":
