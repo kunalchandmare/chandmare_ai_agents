@@ -101,6 +101,16 @@ All generation happens locally from the two input YAML files.
 - If `required` is absent or false, `default` must be provided
 - Empty `arguments:` is allowed (step with no parameters)
 
+## Rules for Cleaning Projects
+
+- When running the clean operation, if any custom (non-generated) files are detected inside generated folders (such as src/ or components/), the agent MUST:
+    - Prompt the user with a warning listing the custom files.
+    - Advise the user to stash these files before proceeding.
+    - Provide the following git commands as guidance:
+      - `git add <custom_files>`
+      - `git stash push -m 'Stash custom files before cleaning'`
+    - Ask for confirmation before deleting any files. If the user does not confirm, abort the clean operation.
+
 ## Output rules
 
 Given a `pipeline.yaml` with steps `clean`, `train` and components `download_data`, `test_model`, the generated project looks like:
@@ -195,3 +205,11 @@ chandmare_ai_agents/
 - This agent spec is the single source of truth for all rules
 - Environment files are never handwritten — `create_env_agent` generates them
 - Nothing is pushed or modified remotely
+
+## Agent Rules
+
+- Always place all import statements at the very top of every `.py` file, before any other code, docstrings, or comments. Imports must not appear inside functions or classes.
+- Each argument (including multiplicity sets and sub-arguments) must always have a `description` field.
+- When running the clean operation, if any custom (non-generated) files are detected inside generated folders, prompt the user, advise to stash, and require confirmation before deletion.
+- Existing `run.py` files are never overwritten on re-run.
+- Arguments defined in `pipeline.yaml` auto-propagate to all generated files (`run.py`, `MLproject`, `params.yaml`).

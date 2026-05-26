@@ -1,12 +1,12 @@
-"""
-Core generator — reads config.yaml + pipeline.yaml and produces the full project.
-"""
 import shutil
+import os
 from pathlib import Path
-
 import yaml
 from jinja2 import Environment, FileSystemLoader
 
+"""
+Core generator — reads config.yaml + pipeline.yaml and produces the full project.
+"""
 # Template and blueprint directories are shipped with the package
 _PACKAGE_DIR = Path(__file__).parent
 _TEMPLATE_DIR = _PACKAGE_DIR / "template"
@@ -206,3 +206,54 @@ def _generate_params_yaml(pipeline: dict, output_path: Path, config: dict) -> No
         yaml.dump(params, default_flow_style=False, sort_keys=False),
         encoding="utf-8",
     )
+
+
+def clean_project(output_path: Path, generated_files: set = None):
+    """Remove all generated artifacts except config.yaml and pipeline.yaml. Warn if custom files are detected."""
+    # List of files/folders to preserve
+    preserve = {"config.yaml", "pipeline.yaml", "config.yaml.sample", "pipeline.yaml.sample"}
+    # List of generated root files
+    generated_root = {"main.py", "MLproject", "params.yaml", "AGENTS.md"}
+    # Folders to clean
+    folders = ["src", "components"]
+
+    # Detect custom files in src/ and components/
+    custom_files = []
+    for folder in folders:
+        folder_path = output_path / folder
+        if folder_path.exists():
+            for dirpath, dirnames, filenames in os.walk(folder_path):
+                for fname in filenames:
+                    fpath = Path(dirpath) / fname
+                    rel_path = str(fpath.relative_to(output_path))
+                    # If generated_files is None or empty, treat all files as custom
+                    if not generated_files or rel_path not in generated_files:
+                        custom_files.append(rel_path)
+
+    if custom_files:
+        print("WARNING: Custom files detected in generated folders:")
+        for f in custom_files:
+            print(f"  - {f}")
+        print("\nBefore cleaning, you may want to stash these files:")
+        print("  git add " + " ".join(custom_files))
+        print("  git stash push -m 'Stash custom files before cleaning'\n")
+        resp = input("Proceed with cleaning? [y/N]: ")
+        if resp.strip().lower() != "y":
+            print("Aborted clean.")
+            raise SystemExit(1)
+
+    # Remove generated root files
+    for fname in generated_root:
+        f = output_path / fname
+        if f.exists():
+            f.unlink()
+    # Remove generated folders
+    for folder in folders:
+        folder_path = output_path / folder
+        if folder_path.exists():
+            shutil.rmtree(folder_path)
+    # Remove params.yaml
+    params_path = output_path / "params.yaml"
+    if params_path.exists():
+        params_path.unlink()
+    print("Clean complete.")

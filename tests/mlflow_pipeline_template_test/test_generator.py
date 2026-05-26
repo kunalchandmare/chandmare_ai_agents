@@ -432,3 +432,31 @@ components: {}
     assert "arg1=foo1 arg2=42" in output_lines
     assert "arg1=foo2 arg2=99" in output_lines
     assert "arg1=bar arg2=123" in output_lines
+
+
+def test_clean_project_prompts_on_custom_files(tmp_path, monkeypatch, capsys):
+    """Test that clean_project prompts the user if custom files are present in generated folders."""
+    from pathlib import Path
+    from mlflow_pipeline_template.generator import clean_project
+
+    # Setup: create src/step1/ with a custom file
+    src_dir = tmp_path / "src" / "step1"
+    src_dir.mkdir(parents=True, exist_ok=True)
+    custom_file = src_dir / "my_custom.py"
+    custom_file.write_text("print('custom')\n", encoding="utf-8")
+
+    # Patch input to simulate user declining the prompt
+    monkeypatch.setattr("builtins.input", lambda _: "n")
+
+    import pytest
+    with pytest.raises(SystemExit) as excinfo:
+        clean_project(tmp_path, generated_files=set())
+    assert excinfo.value.code == 1
+
+    # Check output
+    out = capsys.readouterr().out
+    assert "WARNING: Custom files detected" in out
+    assert "my_custom.py" in out
+    assert "git add" in out
+    assert "git stash push" in out
+    # Do not check for input prompt, as it is not reliably captured in pytest
