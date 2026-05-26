@@ -2,6 +2,7 @@
 # Defines steps (project-specific) and components (reusable).
 # Arguments auto-propagate to run.py (argparse) and MLproject (parameters).
 
+
 steps:
   clean:
     description: "Apply data cleaning and filtering"
@@ -30,6 +31,43 @@ steps:
         type: int
         default: 42
         description: "Random seed for reproducibility"
+
+  # --- Example: Multiplicity Argument Set ---
+  multi_source_example:
+    description: "Step with repeated dataset sources using multiplicity argument set."
+    arguments:
+      dataset_sources:
+        multiplicity: true
+        multiplicity_count: 2
+        args:
+          - out_dir:
+              type: str
+              required: true
+              description: "Directory where files are downloaded"
+            extract_root:
+              type: str
+              default: "."
+              description: "Root directory where archives are extracted"
+            force_download:
+              type: bool
+              default: false
+              description: "Force re-download even if file already exists"
+            dataset_url:
+              type: str
+              default: null
+              description: "Optional custom dataset URL (must be paired with dataset_filename and dataset_md5)"
+            dataset_filename:
+              type: str
+              default: null
+              description: "Optional custom downloaded filename (must be paired with dataset_url and dataset_md5)"
+            dataset_md5:
+              type: str
+              default: null
+              description: "Optional custom MD5 checksum (must be paired with dataset_url and dataset_filename)"
+            dataset_extract_to:
+              type: str
+              default: null
+              description: "Optional extraction path relative to extract_root for custom archive"
 
 components:
   download_data:

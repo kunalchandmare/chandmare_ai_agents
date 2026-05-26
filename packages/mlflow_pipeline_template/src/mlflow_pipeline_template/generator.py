@@ -115,16 +115,28 @@ def _generate_step_or_component(
     processed_arguments = {}
     for arg_name, arg_cfg in arguments.items():
         if isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False):
-            # Ensure each sub-argument in 'args' has a description
-            args_list = []
-            for sub_arg in arg_cfg.get("args", []):
+            # Support both 'args:' and flat sub-argument style
+            if "args" in arg_cfg:
+                args_list = []
+                for sub_arg in arg_cfg.get("args", []):
+                    fixed_sub_arg = {}
+                    for sub_name, sub_cfg in sub_arg.items():
+                        fixed_sub_cfg = dict(sub_cfg)
+                        if "description" not in fixed_sub_cfg:
+                            fixed_sub_cfg["description"] = ""
+                        fixed_sub_arg[sub_name] = fixed_sub_cfg
+                    args_list.append(fixed_sub_arg)
+            else:
+                # Flat style: all keys except multiplicity/multiplicity_count are sub-args
                 fixed_sub_arg = {}
-                for sub_name, sub_cfg in sub_arg.items():
+                for sub_name, sub_cfg in arg_cfg.items():
+                    if sub_name in ("multiplicity", "multiplicity_count"):
+                        continue
                     fixed_sub_cfg = dict(sub_cfg)
                     if "description" not in fixed_sub_cfg:
                         fixed_sub_cfg["description"] = ""
                     fixed_sub_arg[sub_name] = fixed_sub_cfg
-                args_list.append(fixed_sub_arg)
+                args_list = [fixed_sub_arg]
             processed_arguments[arg_name] = {
                 "multiplicity": True,
                 "multiplicity_count": arg_cfg.get("multiplicity_count", 1),
@@ -177,15 +189,27 @@ def _generate_params_yaml(pipeline: dict, output_path: Path, config: dict) -> No
                 # Multiplicity support
                 if isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False):
                     count = arg_cfg.get("multiplicity_count", 1)
-                    args_list = []
-                    for sub_arg in arg_cfg.get("args", []):
+                    # Support both 'args:' and flat sub-argument style
+                    if "args" in arg_cfg:
+                        args_list = []
+                        for sub_arg in arg_cfg.get("args", []):
+                            fixed_sub_arg = {}
+                            for sub_name, sub_cfg in sub_arg.items():
+                                fixed_sub_cfg = dict(sub_cfg)
+                                if "description" not in fixed_sub_cfg:
+                                    fixed_sub_cfg["description"] = ""
+                                fixed_sub_arg[sub_name] = fixed_sub_cfg
+                            args_list.append(fixed_sub_arg)
+                    else:
                         fixed_sub_arg = {}
-                        for sub_name, sub_cfg in sub_arg.items():
+                        for sub_name, sub_cfg in arg_cfg.items():
+                            if sub_name in ("multiplicity", "multiplicity_count"):
+                                continue
                             fixed_sub_cfg = dict(sub_cfg)
                             if "description" not in fixed_sub_cfg:
                                 fixed_sub_cfg["description"] = ""
                             fixed_sub_arg[sub_name] = fixed_sub_cfg
-                        args_list.append(fixed_sub_arg)
+                        args_list = [fixed_sub_arg]
                     # For params.yaml, store as a list of dicts with defaults
                     step_params[arg_name] = []
                     for i in range(count):

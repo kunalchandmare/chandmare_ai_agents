@@ -504,3 +504,76 @@ def test_clean_project_fallback_generated(monkeypatch, tmp_path, capsys):
     assert "git add" in out
     assert "git stash push" in out
     assert "Aborted clean." in out
+
+
+def test_multiplicity_flat_style_params_yaml(tmp_path):
+    """Test that flat-style multiplicity argument set generates correct params.yaml entries."""
+    from mlflow_pipeline_template.generator import generate_project
+    import yaml
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("project_name: multiplicity_flat_test\n", encoding="utf-8")
+
+    pipeline_yaml = '''
+steps:
+  download:
+    description: "Download and extract archives"
+    arguments:
+      dataset_sources:
+        multiplicity: true
+        multiplicity_count: 2
+        out_dir:
+          type: str
+          required: true
+          description: "Directory where files are downloaded"
+        extract_root:
+          type: str
+          default: "."
+          description: "Root directory where archives are extracted"
+        force_download:
+          type: bool
+          default: false
+          description: "Force re-download"
+        dataset_url:
+          type: str
+          default: null
+          description: "Optional custom dataset URL"
+        dataset_filename:
+          type: str
+          default: null
+          description: "Optional custom downloaded filename"
+        dataset_md5:
+          type: str
+          default: null
+          description: "Optional custom MD5 checksum"
+        dataset_extract_to:
+          type: str
+          default: null
+          description: "Optional extraction path"
+components: {}
+'''
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(pipeline_yaml, encoding="utf-8")
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    params_path = tmp_path / "params.yaml"
+    assert params_path.exists()
+    params = yaml.safe_load(params_path.read_text(encoding="utf-8"))
+    # Should be a list of dicts, length 2, with all sub-args present
+    assert "download" in params
+    assert "dataset_sources" in params["download"]
+    ds = params["download"]["dataset_sources"]
+    assert isinstance(ds, list)
+    assert len(ds) == 2
+    for entry in ds:
+        assert set(entry.keys()) == {
+            "out_dir", "extract_root", "force_download", "dataset_url", "dataset_filename", "dataset_md5", "dataset_extract_to"
+        }
+        assert entry["out_dir"] == ""
+        assert entry["extract_root"] == "."
+        assert entry["force_download"] is False
+        assert entry["dataset_url"] is None
+        assert entry["dataset_filename"] is None
+        assert entry["dataset_md5"] is None
+        assert entry["dataset_extract_to"] is None
