@@ -577,3 +577,83 @@ components: {}
         assert entry["dataset_filename"] is None
         assert entry["dataset_md5"] is None
         assert entry["dataset_extract_to"] is None
+
+
+def test_multiplicity_component_run_py_template(tmp_path):
+    """Test that generated component run.py contains correct multiplicity loop code."""
+    from mlflow_pipeline_template.generator import generate_project
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("project_name: multiplicity_component_test\n", encoding="utf-8")
+
+    pipeline_yaml = '''
+components:
+  my_component:
+    description: "Component with multiplicity argument set"
+    arguments:
+      my_arg_set:
+        multiplicity: true
+        multiplicity_count: 2
+        args:
+          - arg1:
+              type: str
+              default: foo
+              required: true
+              description: "desc1"
+            arg2:
+              type: int
+              default: 42
+              description: "desc2"
+steps: {}
+'''
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(pipeline_yaml, encoding="utf-8")
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    run_py = (tmp_path / "components" / "my_component" / "run.py").read_text(encoding="utf-8")
+    # Check for multiplicity loop code
+    assert "for i, arg_set in enumerate(getattr(args, 'my_arg_set')" in run_py
+    assert "multiplicity_counts['my_arg_set']" in run_py
+    assert "Processing my_arg_set set" in run_py
+
+
+def test_multiplicity_step_mlproject_template(tmp_path):
+    """Test that generated step MLproject contains only parent multiplicity argument as parameter."""
+    from mlflow_pipeline_template.generator import generate_project
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("project_name: multiplicity_step_test\n", encoding="utf-8")
+
+    pipeline_yaml = '''
+steps:
+  my_step:
+    description: "Step with multiplicity argument set"
+    arguments:
+      my_arg_set:
+        multiplicity: true
+        multiplicity_count: 2
+        args:
+          - arg1:
+              type: str
+              default: foo
+              required: true
+              description: "desc1"
+            arg2:
+              type: int
+              default: 42
+              description: "desc2"
+components: {}
+'''
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(pipeline_yaml, encoding="utf-8")
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    mlproject = (tmp_path / "src" / "my_step" / "MLproject").read_text(encoding="utf-8")
+    # Should include only the parent multiplicity argument
+    assert "my_arg_set:" in mlproject
+    assert "type: list" in mlproject
+    assert "desc1" not in mlproject  # sub-argument descriptions should not appear
+    assert "arg1" not in mlproject
+    assert "arg2" not in mlproject

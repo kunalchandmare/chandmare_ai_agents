@@ -56,6 +56,7 @@ All generation happens locally from the two input YAML files.
   - `mlflow` → uses `mlflow.log_artifact()` and `mlflow.artifacts.download_artifacts()`
   - `dvc` → uses `subprocess` calls to `dvc add`, `dvc push`, `dvc pull`
   - `wandb` → uses `wandb.init()`, `wandb.Artifact`, Windows-safe download
+- To ensure consistency, always generate all templates and code files directly from the parsed structure of pipeline.yaml and config.yaml, so that any change in the schema of these YAML files is automatically and accurately reflected in every generated artifact
 - No separate utility library is generated — backend code lives inline in each `run.py`.
 - `create_env_agent` is invoked as the final post-generation task (if installed) to produce all `conda.yml` files.
 - Existing `run.py` files are never overwritten on re-run — safe to add steps incrementally.
