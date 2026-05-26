@@ -74,6 +74,53 @@ def _render_root_templates(config: dict, pipeline: dict, output_path: Path) -> N
 
     steps = pipeline.get("steps", {})
     components = pipeline.get("components", {})
+    # Patch: propagate multiplicity_arg and multiplicity_sub_args into steps/components for root templates
+    for step_name, step_cfg in steps.items():
+        arguments = step_cfg.get("arguments", {})
+        multiplicity_arg = None
+        multiplicity_sub_args = None
+        for arg_name, arg_cfg in arguments.items():
+            if isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False):
+                multiplicity_arg = arg_name
+                if "args" in arg_cfg:
+                    sub_args = set()
+                    for sub_arg in arg_cfg.get("args", []):
+                        for sub_name in sub_arg.keys():
+                            sub_args.add(sub_name)
+                    multiplicity_sub_args = sorted(sub_args)
+                else:
+                    sub_args = []
+                    for sub_name in arg_cfg.keys():
+                        if sub_name in ("multiplicity", "multiplicity_count"):
+                            continue
+                        sub_args.append(sub_name)
+                    multiplicity_sub_args = sub_args
+        if multiplicity_arg:
+            step_cfg["multiplicity_arg"] = multiplicity_arg
+            step_cfg["multiplicity_sub_args"] = multiplicity_sub_args
+    for comp_name, comp_cfg in components.items():
+        arguments = comp_cfg.get("arguments", {})
+        multiplicity_arg = None
+        multiplicity_sub_args = None
+        for arg_name, arg_cfg in arguments.items():
+            if isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False):
+                multiplicity_arg = arg_name
+                if "args" in arg_cfg:
+                    sub_args = set()
+                    for sub_arg in arg_cfg.get("args", []):
+                        for sub_name in sub_arg.keys():
+                            sub_args.add(sub_name)
+                    multiplicity_sub_args = sorted(sub_args)
+                else:
+                    sub_args = []
+                    for sub_name in arg_cfg.keys():
+                        if sub_name in ("multiplicity", "multiplicity_count"):
+                            continue
+                        sub_args.append(sub_name)
+                    multiplicity_sub_args = sub_args
+        if multiplicity_arg:
+            comp_cfg["multiplicity_arg"] = multiplicity_arg
+            comp_cfg["multiplicity_sub_args"] = multiplicity_sub_args
     ctx = {
         **config,
         "steps": steps,
@@ -113,35 +160,38 @@ def _generate_step_or_component(
     # Preprocess arguments for multiplicity and ensure 'description' exists
     arguments = step_config.get("arguments", {})
     processed_arguments = {}
+    multiplicity_sub_args = None
+    multiplicity_arg = None
     for arg_name, arg_cfg in arguments.items():
         if isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False):
-            # Support both 'args:' and flat sub-argument style
+            multiplicity_arg = arg_name
+            # For main.py orchestration only: expose sub-arguments as normal arguments for MLproject/run.py
             if "args" in arg_cfg:
-                args_list = []
+                sub_args = []
                 for sub_arg in arg_cfg.get("args", []):
-                    fixed_sub_arg = {}
+                    for sub_name in sub_arg.keys():
+                        sub_args.append(sub_name)
+                multiplicity_sub_args = sub_args
+                for sub_arg in arg_cfg.get("args", []):
                     for sub_name, sub_cfg in sub_arg.items():
                         fixed_sub_cfg = dict(sub_cfg)
                         if "description" not in fixed_sub_cfg:
                             fixed_sub_cfg["description"] = ""
-                        fixed_sub_arg[sub_name] = fixed_sub_cfg
-                    args_list.append(fixed_sub_arg)
+                        processed_arguments[sub_name] = fixed_sub_cfg
             else:
-                # Flat style: all keys except multiplicity/multiplicity_count are sub-args
-                fixed_sub_arg = {}
+                sub_args = []
+                for sub_name in arg_cfg.keys():
+                    if sub_name in ("multiplicity", "multiplicity_count"):
+                        continue
+                    sub_args.append(sub_name)
+                multiplicity_sub_args = sub_args
                 for sub_name, sub_cfg in arg_cfg.items():
                     if sub_name in ("multiplicity", "multiplicity_count"):
                         continue
                     fixed_sub_cfg = dict(sub_cfg)
                     if "description" not in fixed_sub_cfg:
                         fixed_sub_cfg["description"] = ""
-                    fixed_sub_arg[sub_name] = fixed_sub_cfg
-                args_list = [fixed_sub_arg]
-            processed_arguments[arg_name] = {
-                "multiplicity": True,
-                "multiplicity_count": arg_cfg.get("multiplicity_count", 1),
-                "args": args_list
-            }
+                    processed_arguments[sub_name] = fixed_sub_cfg
         else:
             fixed_cfg = dict(arg_cfg)
             if "description" not in fixed_cfg:
@@ -152,6 +202,8 @@ def _generate_step_or_component(
         "step_name": name,
         "description": step_config.get("description", ""),
         "arguments": processed_arguments,
+        "multiplicity_arg": multiplicity_arg,
+        "multiplicity_sub_args": multiplicity_sub_args,
     }
 
     for tmpl_path in sorted(blueprint_dir.iterdir()):

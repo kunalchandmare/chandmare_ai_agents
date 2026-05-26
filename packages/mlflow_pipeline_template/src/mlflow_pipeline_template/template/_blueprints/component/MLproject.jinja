@@ -1,17 +1,23 @@
 name: {{ step_name }}
-conda_env: conda.yml
+conda_env: conda.yaml
 
 entry_points:
   main:
     parameters:
 {% for arg_name, arg_cfg in arguments.items() %}
 {% if arg_cfg.get('multiplicity', False) %}
-      {{ arg_name }}:
-        description: "{{ arg_cfg.get('description', '') }} (repeated argument set)"
-        type: list
-{% if not arg_cfg.get('required', false) %}
-        default: []
+    {# Expose each sub-argument as a parameter #}
+    {% set sub_args = arg_cfg.get('args', []) %}
+    {% for sub_arg in sub_args %}
+        {% for sub_name, sub_cfg in sub_arg.items() %}
+      {{ sub_name }}:
+        description: "{{ sub_cfg.get('description', '') }}"
+        type: {% set t = sub_cfg.get('type', 'str') %}{% if t == 'str' %}string{% elif t == 'int' or t == 'float' %}float{% elif t == 'bool' %}string{% else %}{{ t }}{% endif %}
+{% if not sub_cfg.get('required', false) %}
+        default: "{{ sub_cfg.get('default', '') }}"
 {% endif %}
+        {% endfor %}
+    {% endfor %}
 {% else %}
       {{ arg_name }}:
         description: "{{ arg_cfg.get('description', '') }}"
@@ -29,13 +35,5 @@ entry_points:
         description: "Output artifact name"
         type: string
 {% endif %}
-
     command: >-
-      python run.py
-{% for arg_name, arg_cfg in arguments.items() %}
-        --{{ arg_name }} {{ '{' }}{{ arg_name }}{{ '}' }}
-{% endfor %}
-{% if not arguments %}
-        --input_artifact {input_artifact}
-        --output_artifact {output_artifact}
-{% endif %}
+      python run.py{% for arg_name, arg_cfg in arguments.items() %}{% if arg_cfg.get('multiplicity', False) %}{% set sub_args = arg_cfg.get('args', []) %}{% for sub_arg in sub_args %}{% for sub_name, sub_cfg in sub_arg.items() %} --{{ sub_name }} {{'{'}}{{ sub_name }}{{'}'}}{% endfor %}{% endfor %}{% else %} --{{ arg_name }} {{'{'}}{{ arg_name }}{{'}'}}{% endif %}{% endfor %}{% if not arguments %} --input_artifact {input_artifact} --output_artifact {output_artifact}{% endif %}

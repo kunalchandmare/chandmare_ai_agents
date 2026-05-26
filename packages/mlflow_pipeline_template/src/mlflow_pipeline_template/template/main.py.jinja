@@ -23,47 +23,82 @@ _steps = [
 {%- endfor %}
 ]
 
-
 @hydra.main(version_base=None, config_name="params", config_path=".")
 def go(config: DictConfig):
-{% if artifact_backend == 'wandb' %}
+{%- if artifact_backend == 'wandb' %}
     os.environ["WANDB_PROJECT"] = config["main"]["project_name"]
     os.environ["WANDB_RUN_GROUP"] = config["main"]["experiment_name"]
-{% endif %}
-
+{%- endif %}
     steps_par = config["main"]["steps"]
     active_steps = steps_par.split(",") if steps_par != "all" else _steps
 
     # ── src/ steps ─────────────────────────────────────────────────────────────
-{% for step_name, step_cfg in steps.items() %}
+{%- for step_name, step_cfg in steps.items() %}
     if "{{ step_name }}" in active_steps:
+    {%- set multiplicity_arg = None -%}
+    {%- set multiplicity_sub_args = None -%}
+    {%- if step_cfg.multiplicity_arg is defined and step_cfg.multiplicity_arg %}
+        {%- set multiplicity_arg = step_cfg.multiplicity_arg -%}
+        {%- set multiplicity_sub_args = step_cfg.multiplicity_sub_args -%}
+    {%- endif %}
+    {%- if multiplicity_arg and multiplicity_sub_args %}
+        for entry in config["{{ step_name }}"]["{{ multiplicity_arg }}"]:
+            mlflow.run(
+                os.path.join(hydra.utils.get_original_cwd(), "src", "{{ step_name }}"),
+                "main",
+                env_manager="local",
+                parameters={
+{%- for sub_arg_name in multiplicity_sub_args %}
+                    "{{ sub_arg_name }}": str(entry["{{ sub_arg_name }}"]),
+{%- endfor %}
+                },
+            )
+    {%- else %}
         mlflow.run(
             os.path.join(hydra.utils.get_original_cwd(), "src", "{{ step_name }}"),
             "main",
             env_manager="local",
             parameters={
-{% for arg_name, arg_cfg in (step_cfg.get('arguments', {}) or {}).items() %}
+{%- for arg_name, arg_cfg in (step_cfg.get('arguments', {}) or {}).items() %}
                 "{{ arg_name }}": str(config["{{ step_name }}"]["{{ arg_name }}"]),
-{% endfor %}
+{%- endfor %}
             },
         )
-
-{% endfor %}
+    {%- endif %}
+{%- endfor %}
     # ── components/ ────────────────────────────────────────────────────────────
-{% for comp_name, comp_cfg in components.items() %}
+{%- for comp_name, comp_cfg in components.items() %}
     if "{{ comp_name }}" in active_steps:
+    {%- set multiplicity_arg = None -%}
+    {%- set multiplicity_sub_args = None -%}
+    {%- if comp_cfg.multiplicity_arg is defined and comp_cfg.multiplicity_arg %}
+        {%- set multiplicity_arg = comp_cfg.multiplicity_arg -%}
+        {%- set multiplicity_sub_args = comp_cfg.multiplicity_sub_args -%}
+    {%- endif %}
+    {%- if multiplicity_arg and multiplicity_sub_args %}
+        for entry in config["{{ comp_name }}"]["{{ multiplicity_arg }}"]:
+            mlflow.run(
+                os.path.join(hydra.utils.get_original_cwd(), "components", "{{ comp_name }}"),
+                "main",
+                env_manager="local",
+                parameters={
+{%- for sub_arg_name in multiplicity_sub_args %}
+                    "{{ sub_arg_name }}": str(entry["{{ sub_arg_name }}"]),
+{%- endfor %}
+                },
+            )
+    {%- else %}
         mlflow.run(
             os.path.join(hydra.utils.get_original_cwd(), "components", "{{ comp_name }}"),
             "main",
             env_manager="local",
             parameters={
-{% for arg_name, arg_cfg in (comp_cfg.get('arguments', {}) or {}).items() %}
+{%- for arg_name, arg_cfg in (comp_cfg.get('arguments', {}) or {}).items() %}
                 "{{ arg_name }}": str(config["{{ comp_name }}"]["{{ arg_name }}"]),
-{% endfor %}
+{%- endfor %}
             },
         )
-
-{% endfor %}
-
+    {%- endif %}
+{%- endfor %}
 if __name__ == "__main__":
     go()

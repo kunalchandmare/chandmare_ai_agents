@@ -20,109 +20,82 @@ logger = logging.getLogger()
 
 
 def go(args):
-    # --- Handle multiplicity arguments ---
-    multiplicity_args = []
-    multiplicity_counts = {}
-    # Detect multiplicity arguments from context
-    {% for arg_name, arg_cfg in arguments.items() %}
-    {% if arg_cfg.get('multiplicity', False) %}
-    multiplicity_args.append("{{ arg_name }}")
-    multiplicity_counts["{{ arg_name }}"] = {{ arg_cfg.get('multiplicity_count', 1) }}
-    {% endif %}
-    {% endfor %}
+    # No multiplicity handling; all arguments are single set
 
-    {% if artifact_backend == 'wandb' %}
-    run = wandb.init(job_type="{{ step_name }}")
-    run.config.update(vars(args))
+        {% if artifact_backend == 'wandb' %}
+            run = wandb.init(job_type="{{ step_name }}")
+            run.config.update(vars(args))
 
-    # --- Download input artifact (W&B) ---
-    # artifact = run.use_artifact("<artifact_name:version>")
-    # safe_name = artifact.name.replace(":", "_")
-    # artifact_dir = Path("safe_artifacts") / safe_name
-    # artifact_dir.mkdir(parents=True, exist_ok=True)
-    # artifact.download(root=str(artifact_dir))
+            # --- Download input artifact (W&B) ---
+            # artifact = run.use_artifact("<artifact_name:version>")
+            # safe_name = artifact.name.replace(":", "_")
+            # artifact_dir = Path("safe_artifacts") / safe_name
+            # artifact_dir.mkdir(parents=True, exist_ok=True)
+            # artifact.download(root=str(artifact_dir))
 
-    # --- Example: Loop over multiplicity argument sets ---
-    {% for arg_name, arg_cfg in arguments.items() %}
-    {% if arg_cfg.get('multiplicity', False) %}
-    for i, arg_set in enumerate(getattr(args, '{{ arg_name }}') or []):
-        print(f"Processing {{ arg_name }} set {i+1}/{multiplicity_counts['{{ arg_name }}']}: {arg_set}")
-        # TODO: implement logic for each set
-    {% endif %}
-    {% endfor %}
-    # TODO: implement component logic (keep it schema-agnostic)
+            # TODO: implement component logic (keep it schema-agnostic)
 
-    # --- Upload output artifact (W&B) ---
-    # output = wandb.Artifact("<name>", type="<type>", description="<desc>")
-    # output.add_file("<path>")
-    # run.log_artifact(output)
-    # output.wait()
+            # --- Upload output artifact (W&B) ---
+            # output = wandb.Artifact("<name>", type="<type>", description="<desc>")
+            # output.add_file("<path>")
+            # run.log_artifact(output)
+            # output.wait()
 
-    run.finish()
-    {% elif artifact_backend == 'dvc' %}
-    with mlflow.start_run():
-        # --- Pull input artifact (DVC) ---
-        # subprocess.run(["dvc", "pull", "<file>.dvc"], check=True)
+            run.finish()
+        {% elif artifact_backend == 'dvc' %}
+            # Optionally, enable MLflow tracking for DVC runs
+            # with mlflow.start_run():
+            try:
+                # --- Pull input artifact (DVC) ---
+                input_dvc_file = "<file>.dvc"  # TODO: set actual input DVC file
+                logger.info(f"Pulling input artifact: {input_dvc_file}")
+                subprocess.run(["dvc", "pull", input_dvc_file], check=True)
 
-        # --- Example: Loop over multiplicity argument sets ---
-        {% for arg_name, arg_cfg in arguments.items() %}
-        {% if arg_cfg.get('multiplicity', False) %}
-        for i, arg_set in enumerate(getattr(args, '{{ arg_name }}') or []):
-            print(f"Processing {{ arg_name }} set {i+1}/{multiplicity_counts['{{ arg_name }}']}: {arg_set}")
-            # TODO: implement logic for each set
+                # TODO: implement component logic (keep it schema-agnostic)
+
+                # --- Track and push output artifact (DVC) ---
+                output_path = "<output_path>"  # TODO: set actual output path
+                logger.info(f"Adding output artifact to DVC: {output_path}")
+                subprocess.run(["dvc", "add", output_path], check=True)
+                logger.info("Pushing output artifact to remote DVC storage")
+                subprocess.run(["dvc", "push"], check=True)
+            except subprocess.CalledProcessError as e:
+                logger.error(f"DVC command failed: {e}")
+                raise
+            except Exception as e:
+                logger.error(f"Unexpected error: {e}")
+                raise
+        {% else %}
+            with mlflow.start_run():
+                # --- Download input artifact (MLflow) ---
+                # local_path = mlflow.artifacts.download_artifacts(artifact_uri="<uri>")
+
+                # TODO: implement component logic (keep it schema-agnostic)
+
+                # --- Upload output artifact (MLflow) ---
+                # mlflow.log_artifact("<local_path>")
+
+                pass
         {% endif %}
-        {% endfor %}
-        # TODO: implement component logic (keep it schema-agnostic)
-
-        # --- Track and push output artifact (DVC) ---
-        # subprocess.run(["dvc", "add", "<output_path>"], check=True)
-        # subprocess.run(["dvc", "push"], check=True)
-
-        pass
-    {% else %}
-    with mlflow.start_run():
-        # --- Download input artifact (MLflow) ---
-        # local_path = mlflow.artifacts.download_artifacts(artifact_uri="<uri>")
-
-        # --- Example: Loop over multiplicity argument sets ---
-        {% for arg_name, arg_cfg in arguments.items() %}
-        {% if arg_cfg.get('multiplicity', False) %}
-        for i, arg_set in enumerate(getattr(args, '{{ arg_name }}') or []):
-            print(f"Processing {{ arg_name }} set {i+1}/{multiplicity_counts['{{ arg_name }}']}: {arg_set}")
-            # TODO: implement logic for each set
-        {% endif %}
-        {% endfor %}
-        # TODO: implement component logic (keep it schema-agnostic)
-
-        # --- Upload output artifact (MLflow) ---
-        # mlflow.log_artifact("<local_path>")
-
-        pass
-    {% endif %}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Component: {{ step_name }}")
-{% for arg_name, arg_cfg in arguments.items() %}
-{% set arg_type = arg_cfg.get('type', 'str') %}
-{% if arg_cfg.get('multiplicity', False) %}
+{% for arg_name, arg_cfg in arguments.items() -%}
+    {% set arg_type = arg_cfg.get('type', 'str') %}
+    {% if arg_type == 'bool' %}
     parser.add_argument(
-        "--{{ arg_name }}", action="append", type=lambda s: eval(s),
+        "--{{ arg_name }}", type=lambda x: x.lower() == "true",
         required={{ 'True' if arg_cfg.get('required', False) else 'False' }},
-        help="{{ arg_cfg.get('description', '') }} (repeatable, expects dict as string, e.g. --{{ arg_name }} '{\"foo\":1,\"bar\":2}')"
+        help="{{ arg_cfg.get('description', '') }} (true/false)"
     )
-{% elif arg_cfg.get('required', false) %}
+    {% else %}
     parser.add_argument(
-        "--{{ arg_name }}", type={{ arg_type }}, required=True,
+        "--{{ arg_name }}", type={{ arg_type }},
+        required={{ 'True' if arg_cfg.get('required', False) else 'False' }},
         help="{{ arg_cfg.get('description', '') }}"
     )
-{% else %}
-    parser.add_argument(
-        "--{{ arg_name }}", type={{ arg_type }}, default={{ arg_cfg.get('default', None) | tojson | replace('null', 'None') | replace('true', 'True') | replace('false', 'False') }},
-        help="{{ arg_cfg.get('description', '') }}"
-    )
-{% endif %}
+    {% endif %}
 {% endfor %}
-
     args = parser.parse_args()
     go(args)

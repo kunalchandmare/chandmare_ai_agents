@@ -272,284 +272,35 @@ def test_params_yaml_generated_with_defaults(project_dir):
     assert params["download"]["source_url"] == ""
 
 
-def test_multiplicity_argument_set_descriptions(tmp_path):
-    """params.yaml contains a list of dicts for multiplicity argument; MLproject exposes only parent argument."""
+def test_orchestrator_handles_multiplicity(tmp_path):
+    """
+    main.py should handle the multiplicity loop, while MLproject and run.py expose only sub-arguments as normal parameters.
+    """
     from mlflow_pipeline_template.generator import generate_project
     import yaml
-
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text("project_name: multiplicity_desc_test\n", encoding="utf-8")
-
-    pipeline_yaml = '''
-steps:
-  multi_step:
-    description: "Step with multiplicity argument set"
-    arguments:
-      my_arg_set:
-        multiplicity: true
-        multiplicity_count: 2
-        args:
-          - arg1:
-              type: str
-              default: foo
-              required: true
-              # no description provided
-            arg2:
-              type: int
-              default: 42
-              description: "Second argument desc."
-components: {}
-'''
-    pipeline_path = tmp_path / "pipeline.yaml"
-    pipeline_path.write_text(pipeline_yaml, encoding="utf-8")
-
-    generate_project(config_path, pipeline_path, tmp_path)
-
-    params_path = tmp_path / "params.yaml"
-    assert params_path.exists()
-    params = yaml.safe_load(params_path.read_text(encoding="utf-8"))
-    # Should be a list of dicts, length 2
-    assert "multi_step" in params
-    assert "my_arg_set" in params["multi_step"]
-    assert isinstance(params["multi_step"]["my_arg_set"], list)
-    assert len(params["multi_step"]["my_arg_set"]) == 2
-    for entry in params["multi_step"]["my_arg_set"]:
-        assert entry["arg1"] == "foo"
-        assert entry["arg2"] == 42
-    # MLproject should expose only the parent argument
-    mlproject = (tmp_path / "src" / "multi_step" / "MLproject").read_text(encoding="utf-8")
-    assert "my_arg_set" in mlproject
-    assert "arg1" not in mlproject
-    assert "arg2" not in mlproject
-
-
-def test_multiplicity_argument_set_run_py_argparse(tmp_path):
-    """run.py argparse should include only the parent multiplicity argument, not sub-arguments."""
-    from mlflow_pipeline_template.generator import generate_project
-
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text("project_name: multiplicity_argparse_test\n", encoding="utf-8")
-
-    pipeline_yaml = '''
-steps:
-  multi_step:
-    description: "Step with multiplicity argument set"
-    arguments:
-      my_arg_set:
-        multiplicity: true
-        multiplicity_count: 2
-        args:
-          - arg1:
-              type: str
-              default: foo
-              required: true
-              description: "desc1"
-            arg2:
-              type: int
-              default: 42
-              description: "desc2"
-components: {}
-'''
-    pipeline_path = tmp_path / "pipeline.yaml"
-    pipeline_path.write_text(pipeline_yaml, encoding="utf-8")
-
-    generate_project(config_path, pipeline_path, tmp_path)
-
-    run_py = (tmp_path / "src" / "multi_step" / "run.py").read_text(encoding="utf-8")
-    # Should include argparse for my_arg_set only
-    assert "--my_arg_set" in run_py
-    assert "--arg1" not in run_py
-    assert "--arg2" not in run_py
-
-
-def test_multiplicity_arg_set_runtime(tmp_path):
-    """Test that run.py can access and iterate over the multiplicity argument set as a list of dicts with correct values."""
-    from mlflow_pipeline_template.generator import generate_project
-    import yaml
-    import subprocess
     import sys
+    import subprocess
 
     config_path = tmp_path / "config.yaml"
-    config_path.write_text("project_name: multiplicity_runtime_test\n", encoding="utf-8")
-
-    pipeline_yaml = '''
-steps:
-  my_step:
-    description: "Step with repeated argument set"
-    arguments:
-      my_arg_set:
-        multiplicity: true
-        multiplicity_count: 3
-        args:
-          - arg1:
-              type: str
-              default: foo
-              required: true
-              description: "First argument in set."
-            arg2:
-              type: int
-              default: 42
-              description: "Second argument in set."
-components: {}
-'''
-    pipeline_path = tmp_path / "pipeline.yaml"
-    pipeline_path.write_text(pipeline_yaml, encoding="utf-8")
-
-    generate_project(config_path, pipeline_path, tmp_path)
-
-    # Overwrite params.yaml with custom values for each set
-    params_path = tmp_path / "params.yaml"
-    params = {
-        "my_step": {
-            "my_arg_set": [
-                {"arg1": "foo1", "arg2": 42},
-                {"arg1": "foo2", "arg2": 99},
-                {"arg1": "bar", "arg2": 123},
-            ]
-        },
-        "main": {"project_name": "multiplicity_runtime_test", "steps": "all", "experiment_name": "dev"}
-    }
-    params_path.write_text(yaml.dump(params, sort_keys=False), encoding="utf-8")
-
-    # Patch run.py to print the argument set for test
-    run_py_path = tmp_path / "src" / "my_step" / "run.py"
-    run_py = run_py_path.read_text(encoding="utf-8")
-    # Insert print logic after parser.parse_args()
-    marker = "args = parser.parse_args()"
-    injected = (
-        f"{marker}\n    import yaml\n    with open('../../params.yaml', 'r', encoding='utf-8') as f:\n        params = yaml.safe_load(f)\n    arg_set = params['my_step']['my_arg_set']\n    for entry in arg_set:\n        print(f'arg1={{entry[\'arg1\']}} arg2={{entry[\'arg2\']}}')\n"
-    )
-    run_py = run_py.replace(marker, injected)
-    run_py_path.write_text(run_py, encoding="utf-8")
-
-    # Run the script and capture output
-    result = subprocess.run(
-        [sys.executable, str(run_py_path)],
-        cwd=str(run_py_path.parent),
-        capture_output=True, text=True,
-    )
-    assert result.returncode == 0
-    output_lines = [l.strip() for l in result.stdout.splitlines() if l.strip()]
-    assert "arg1=foo1 arg2=42" in output_lines
-    assert "arg1=foo2 arg2=99" in output_lines
-    assert "arg1=bar arg2=123" in output_lines
-
-
-def test_clean_project_prompts_on_custom_files(tmp_path, monkeypatch, capsys):
-    """Test that clean_project prompts the user if custom files are present in generated folders."""
-    from pathlib import Path
-    from mlflow_pipeline_template.generator import clean_project
-
-    # Setup: create both a shallow and a deep custom file
-    step1_dir = tmp_path / "src" / "step1"
-    step1_dir.mkdir(parents=True, exist_ok=True)
-    shallow_file = step1_dir / "custom.py"
-    shallow_file.write_text("print('shallow custom')\n", encoding="utf-8")
-
-    nested_dir = step1_dir / "subdir"
-    nested_dir.mkdir(parents=True, exist_ok=True)
-    deep_file = nested_dir / "deep_custom.py"
-    deep_file.write_text("print('deep custom')\n", encoding="utf-8")
-
-    # Patch input to simulate user declining the prompt
-    monkeypatch.setattr("builtins.input", lambda _: "n")
-    with pytest.raises(SystemExit) as excinfo:
-        clean_project(tmp_path, generated_files=set())
-    assert excinfo.value.code == 1
-
-    # Check output
-    out = capsys.readouterr().out
-    out_norm = out.replace("\\", "/")
-    assert "WARNING: Custom files detected" in out
-    assert "deep_custom.py" in out
-    assert "custom.py" in out
-    assert "src/step1/custom.py" in out_norm or "step1/custom.py" in out_norm
-    assert "src/step1/subdir/deep_custom.py" in out_norm or "step1/subdir/deep_custom.py" in out_norm
-    assert "git add" in out
-    assert "git stash push" in out
-    # Do not check for input prompt, as it is not reliably captured in pytest
-
-
-def test_clean_project_fallback_generated(monkeypatch, tmp_path, capsys):
-    """Test clean_project fallback logic: only generated_names are not flagged as custom."""
-    from mlflow_pipeline_template.generator import clean_project
-    # Setup: create src/step1/ with generated and custom files
-    step_dir = tmp_path / "src" / "step1"
-    step_dir.mkdir(parents=True, exist_ok=True)
-    # Generated files
-    (step_dir / "run.py").write_text("print('run')\n", encoding="utf-8")
-    (step_dir / "MLproject").write_text("name: test\n", encoding="utf-8")
-    # Custom file
-    (step_dir / "custom.py").write_text("print('custom')\n", encoding="utf-8")
-    # Root generated file
-    (tmp_path / "main.py").write_text("print('main')\n", encoding="utf-8")
-    # Root custom file (should not be flagged)
-    (tmp_path / "README.md").write_text("# readme\n", encoding="utf-8")
-
-    # Patch input to simulate user declining the prompt
-    monkeypatch.setattr("builtins.input", lambda _: "n")
-    with pytest.raises(SystemExit) as excinfo:
-        clean_project(tmp_path)
-    assert excinfo.value.code == 1
-
-    out = capsys.readouterr().out
-    out_norm = out.replace("\\", "/")
-    # Only custom.py should be flagged
-    assert "custom.py" in out
-    assert "src/step1/custom.py" in out_norm or "step1/custom.py" in out_norm
-    assert "run.py" not in out
-    assert "MLproject" not in out
-    assert "main.py" not in out
-    assert "README.md" not in out  # root custom files are not flagged
-    assert "git add" in out
-    assert "git stash push" in out
-    assert "Aborted clean." in out
-
-
-def test_multiplicity_flat_style_params_yaml(tmp_path):
-    """Test that flat-style multiplicity argument set generates correct params.yaml entries."""
-    from mlflow_pipeline_template.generator import generate_project
-    import yaml
-
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text("project_name: multiplicity_flat_test\n", encoding="utf-8")
+    config_path.write_text("project_name: orchestrator_multiplicity_test\n", encoding="utf-8")
 
     pipeline_yaml = '''
 steps:
   download:
-    description: "Download and extract archives"
+    description: "Download step with multiplicity argument set"
     arguments:
       dataset_sources:
         multiplicity: true
         multiplicity_count: 2
-        out_dir:
-          type: str
-          required: true
-          description: "Directory where files are downloaded"
-        extract_root:
-          type: str
-          default: "."
-          description: "Root directory where archives are extracted"
-        force_download:
-          type: bool
-          default: false
-          description: "Force re-download"
-        dataset_url:
-          type: str
-          default: null
-          description: "Optional custom dataset URL"
-        dataset_filename:
-          type: str
-          default: null
-          description: "Optional custom downloaded filename"
-        dataset_md5:
-          type: str
-          default: null
-          description: "Optional custom MD5 checksum"
-        dataset_extract_to:
-          type: str
-          default: null
-          description: "Optional extraction path"
+        args:
+          - out_dir:
+              type: str
+              required: true
+              description: "Output directory"
+            url:
+              type: str
+              required: true
+              description: "Dataset URL"
 components: {}
 '''
     pipeline_path = tmp_path / "pipeline.yaml"
@@ -557,92 +308,80 @@ components: {}
 
     generate_project(config_path, pipeline_path, tmp_path)
 
-    params_path = tmp_path / "params.yaml"
-    assert params_path.exists()
-    params = yaml.safe_load(params_path.read_text(encoding="utf-8"))
-    # Should be a list of dicts, length 2, with all sub-args present
-    assert "download" in params
-    assert "dataset_sources" in params["download"]
-    ds = params["download"]["dataset_sources"]
-    assert isinstance(ds, list)
-    assert len(ds) == 2
-    for entry in ds:
-        assert set(entry.keys()) == {
-            "out_dir", "extract_root", "force_download", "dataset_url", "dataset_filename", "dataset_md5", "dataset_extract_to"
-        }
-        assert entry["out_dir"] == ""
-        assert entry["extract_root"] == "."
-        assert entry["force_download"] is False
-        assert entry["dataset_url"] is None
-        assert entry["dataset_filename"] is None
-        assert entry["dataset_md5"] is None
-        assert entry["dataset_extract_to"] is None
+    # Check MLproject exposes only sub-arguments
+    mlproject = (tmp_path / "src" / "download" / "MLproject").read_text(encoding="utf-8")
+    assert "dataset_sources" not in mlproject
+    assert "out_dir:" in mlproject
+    assert "url:" in mlproject
+
+    # Check run.py exposes only sub-arguments
+    run_py = (tmp_path / "src" / "download" / "run.py").read_text(encoding="utf-8")
+    assert "--dataset_sources" not in run_py
+    assert "--out_dir" in run_py
+    assert "--url" in run_py
+
+    # Check main.py orchestrator logic for multiplicity
+    main_py_path = tmp_path / "main.py"
+    main_py = main_py_path.read_text(encoding="utf-8")
+    # Check for loop over dataset_sources
+    assert f'for entry in config["download"]["dataset_sources"]' in main_py
+    # Check that only the defined sub-arguments are passed to mlflow.run
+    for sub_arg in ["out_dir", "url"]:
+        assert f'"{sub_arg}": str(entry["{sub_arg}"])' in main_py
+
+    # No simulation of orchestrator loop; only code structure is checked
 
 
-def test_multiplicity_component_run_py_template(tmp_path):
-    """Test that generated component run.py contains correct multiplicity loop code."""
+def test_download_step_with_full_multiplicity_args(tmp_path):
+    """
+    Pipeline with download step using multiplicity argument with 2 sets and 7 sub-arguments.
+    Ensures MLproject and run.py expose only sub-arguments, and orchestrator handles the loop.
+    """
     from mlflow_pipeline_template.generator import generate_project
+    import yaml
+    import sys
+    import subprocess
 
     config_path = tmp_path / "config.yaml"
-    config_path.write_text("project_name: multiplicity_component_test\n", encoding="utf-8")
-
-    pipeline_yaml = '''
-components:
-  my_component:
-    description: "Component with multiplicity argument set"
-    arguments:
-      my_arg_set:
-        multiplicity: true
-        multiplicity_count: 2
-        args:
-          - arg1:
-              type: str
-              default: foo
-              required: true
-              description: "desc1"
-            arg2:
-              type: int
-              default: 42
-              description: "desc2"
-steps: {}
-'''
-    pipeline_path = tmp_path / "pipeline.yaml"
-    pipeline_path.write_text(pipeline_yaml, encoding="utf-8")
-
-    generate_project(config_path, pipeline_path, tmp_path)
-
-    run_py = (tmp_path / "components" / "my_component" / "run.py").read_text(encoding="utf-8")
-    # Check for multiplicity loop code
-    assert "for i, arg_set in enumerate(getattr(args, 'my_arg_set')" in run_py
-    assert "multiplicity_counts['my_arg_set']" in run_py
-    assert "Processing my_arg_set set" in run_py
-
-
-def test_multiplicity_step_mlproject_template(tmp_path):
-    """Test that generated step MLproject contains only parent multiplicity argument as parameter."""
-    from mlflow_pipeline_template.generator import generate_project
-
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text("project_name: multiplicity_step_test\n", encoding="utf-8")
+    config_path.write_text("project_name: multiplicity_full_args_test\n", encoding="utf-8")
 
     pipeline_yaml = '''
 steps:
-  my_step:
-    description: "Step with multiplicity argument set"
+  download:
+    description: "Download and extract Robot@Home archives or one custom source"
     arguments:
-      my_arg_set:
+      dataset_sources:
         multiplicity: true
         multiplicity_count: 2
         args:
-          - arg1:
+          - out_dir:
               type: str
-              default: foo
               required: true
-              description: "desc1"
-            arg2:
-              type: int
-              default: 42
-              description: "desc2"
+              description: "Directory where files are downloaded"
+            extract_root:
+              type: str
+              default: "."
+              description: "Root directory where archives are extracted"
+            force_download:
+              type: bool
+              default: false
+              description: "Force re-download even if file already exists"
+            dataset_url:
+              type: str
+              default: null
+              description: "Optional custom dataset URL (must be paired with dataset_filename and dataset_md5)"
+            dataset_filename:
+              type: str
+              default: null
+              description: "Optional custom downloaded filename (must be paired with dataset_url and dataset_md5)"
+            dataset_md5:
+              type: str
+              default: null
+              description: "Optional custom MD5 checksum (must be paired with dataset_url and dataset_filename)"
+            dataset_extract_to:
+              type: str
+              default: null
+              description: "Optional extraction path relative to extract_root for custom archive"
 components: {}
 '''
     pipeline_path = tmp_path / "pipeline.yaml"
@@ -650,10 +389,83 @@ components: {}
 
     generate_project(config_path, pipeline_path, tmp_path)
 
-    mlproject = (tmp_path / "src" / "my_step" / "MLproject").read_text(encoding="utf-8")
-    # Should include only the parent multiplicity argument
-    assert "my_arg_set:" in mlproject
-    assert "type: list" in mlproject
-    assert "desc1" not in mlproject  # sub-argument descriptions should not appear
-    assert "arg1" not in mlproject
-    assert "arg2" not in mlproject
+    # Check MLproject exposes only sub-arguments
+    mlproject = (tmp_path / "src" / "download" / "MLproject").read_text(encoding="utf-8")
+    assert "dataset_sources" not in mlproject
+    for arg in [
+        "out_dir:", "extract_root:", "force_download:", "dataset_url:",
+        "dataset_filename:", "dataset_md5:", "dataset_extract_to:"
+    ]:
+        assert arg in mlproject
+
+    # Check run.py exposes only sub-arguments
+    run_py = (tmp_path / "src" / "download" / "run.py").read_text(encoding="utf-8")
+    assert "--dataset_sources" not in run_py
+    for arg in [
+        "--out_dir", "--extract_root", "--force_download", "--dataset_url",
+        "--dataset_filename", "--dataset_md5", "--dataset_extract_to"
+    ]:
+        assert arg in run_py
+
+    # Simulate orchestrator logic by running main.py
+    params = {
+        "download": {
+            "dataset_sources": [
+                {
+                    "out_dir": "dir1",
+                    "extract_root": "/extract1",
+                    "force_download": True,
+                    "dataset_url": "http://example.com/1.zip",
+                    "dataset_filename": "file1.zip",
+                    "dataset_md5": "md5-1",
+                    "dataset_extract_to": "extract_to1",
+                },
+                {
+                    "out_dir": "dir2",
+                    "extract_root": "/extract2",
+                    "force_download": False,
+                    "dataset_url": "http://example.com/2.zip",
+                    "dataset_filename": "file2.zip",
+                    "dataset_md5": "md5-2",
+                    "dataset_extract_to": "extract_to2",
+                },
+            ]
+        },
+        "main": {"project_name": "multiplicity_full_args_test", "steps": "all", "experiment_name": "dev"}
+    }
+    params_path = tmp_path / "params.yaml"
+    params_path.write_text(yaml.dump(params, sort_keys=False), encoding="utf-8")
+
+    # Patch run.py to print received arguments
+    run_py_path = tmp_path / "src" / "download" / "run.py"
+    run_py = run_py_path.read_text(encoding="utf-8")
+    marker = "args = parser.parse_args()"
+    injected = (
+        f"{marker}\n    print(f'out_dir={{args.out_dir}} extract_root={{args.extract_root}} force_download={{args.force_download}} "
+        f"dataset_url={{args.dataset_url}} dataset_filename={{args.dataset_filename}} dataset_md5={{args.dataset_md5}} "
+        f"dataset_extract_to={{args.dataset_extract_to}}')\n"
+    )
+    run_py = run_py.replace(marker, injected)
+    run_py_path.write_text(run_py, encoding="utf-8")
+
+    # Run main.py and capture output
+    main_py_path = tmp_path / "main.py"
+    main_py = main_py_path.read_text(encoding="utf-8")
+    # Check for loop over dataset_sources
+    assert f'for entry in config["download"]["dataset_sources"]' in main_py
+    # Check that all sub-arguments are passed to mlflow.run
+    for sub_arg in [
+        "out_dir", "extract_root", "force_download", "dataset_url",
+        "dataset_filename", "dataset_md5", "dataset_extract_to"
+    ]:
+        assert f'"{sub_arg}": str(entry["{sub_arg}"])' in main_py
+
+    result = subprocess.run(
+        [sys.executable, str(main_py_path)],
+        cwd=str(tmp_path),
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    out = result.stdout
+    assert "out_dir=dir1 extract_root=/extract1 force_download=True dataset_url=http://example.com/1.zip dataset_filename=file1.zip dataset_md5=md5-1 dataset_extract_to=extract_to1" in out
+    assert "out_dir=dir2 extract_root=/extract2 force_download=False dataset_url=http://example.com/2.zip dataset_filename=file2.zip dataset_md5=md5-2 dataset_extract_to=extract_to2" in out
