@@ -1,3 +1,4 @@
+import pytest
 """Tests for mlflow_pipeline_template generator with wandb backend and 4 steps."""
 from pathlib import Path
 
@@ -439,24 +440,67 @@ def test_clean_project_prompts_on_custom_files(tmp_path, monkeypatch, capsys):
     from pathlib import Path
     from mlflow_pipeline_template.generator import clean_project
 
-    # Setup: create src/step1/ with a custom file
-    src_dir = tmp_path / "src" / "step1"
-    src_dir.mkdir(parents=True, exist_ok=True)
-    custom_file = src_dir / "my_custom.py"
-    custom_file.write_text("print('custom')\n", encoding="utf-8")
+    # Setup: create both a shallow and a deep custom file
+    step1_dir = tmp_path / "src" / "step1"
+    step1_dir.mkdir(parents=True, exist_ok=True)
+    shallow_file = step1_dir / "custom.py"
+    shallow_file.write_text("print('shallow custom')\n", encoding="utf-8")
+
+    nested_dir = step1_dir / "subdir"
+    nested_dir.mkdir(parents=True, exist_ok=True)
+    deep_file = nested_dir / "deep_custom.py"
+    deep_file.write_text("print('deep custom')\n", encoding="utf-8")
 
     # Patch input to simulate user declining the prompt
     monkeypatch.setattr("builtins.input", lambda _: "n")
-
-    import pytest
     with pytest.raises(SystemExit) as excinfo:
         clean_project(tmp_path, generated_files=set())
     assert excinfo.value.code == 1
 
     # Check output
     out = capsys.readouterr().out
+    out_norm = out.replace("\\", "/")
     assert "WARNING: Custom files detected" in out
-    assert "my_custom.py" in out
+    assert "deep_custom.py" in out
+    assert "custom.py" in out
+    assert "src/step1/custom.py" in out_norm or "step1/custom.py" in out_norm
+    assert "src/step1/subdir/deep_custom.py" in out_norm or "step1/subdir/deep_custom.py" in out_norm
     assert "git add" in out
     assert "git stash push" in out
     # Do not check for input prompt, as it is not reliably captured in pytest
+
+
+def test_clean_project_fallback_generated(monkeypatch, tmp_path, capsys):
+    """Test clean_project fallback logic: only generated_names are not flagged as custom."""
+    from mlflow_pipeline_template.generator import clean_project
+    # Setup: create src/step1/ with generated and custom files
+    step_dir = tmp_path / "src" / "step1"
+    step_dir.mkdir(parents=True, exist_ok=True)
+    # Generated files
+    (step_dir / "run.py").write_text("print('run')\n", encoding="utf-8")
+    (step_dir / "MLproject").write_text("name: test\n", encoding="utf-8")
+    # Custom file
+    (step_dir / "custom.py").write_text("print('custom')\n", encoding="utf-8")
+    # Root generated file
+    (tmp_path / "main.py").write_text("print('main')\n", encoding="utf-8")
+    # Root custom file (should not be flagged)
+    (tmp_path / "README.md").write_text("# readme\n", encoding="utf-8")
+
+    # Patch input to simulate user declining the prompt
+    monkeypatch.setattr("builtins.input", lambda _: "n")
+    with pytest.raises(SystemExit) as excinfo:
+        clean_project(tmp_path)
+    assert excinfo.value.code == 1
+
+    out = capsys.readouterr().out
+    out_norm = out.replace("\\", "/")
+    # Only custom.py should be flagged
+    assert "custom.py" in out
+    assert "src/step1/custom.py" in out_norm or "step1/custom.py" in out_norm
+    assert "run.py" not in out
+    assert "MLproject" not in out
+    assert "main.py" not in out
+    assert "README.md" not in out  # root custom files are not flagged
+    assert "git add" in out
+    assert "git stash push" in out
+    assert "Aborted clean." in out

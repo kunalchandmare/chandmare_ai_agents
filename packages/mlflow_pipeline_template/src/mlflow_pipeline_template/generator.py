@@ -210,12 +210,29 @@ def _generate_params_yaml(pipeline: dict, output_path: Path, config: dict) -> No
 
 def clean_project(output_path: Path, generated_files: set = None):
     """Remove all generated artifacts except config.yaml and pipeline.yaml. Warn if custom files are detected."""
+
     # List of files/folders to preserve
     preserve = {"config.yaml", "pipeline.yaml", "config.yaml.sample", "pipeline.yaml.sample"}
-    # List of generated root files
-    generated_root = {"main.py", "MLproject", "params.yaml", "AGENTS.md"}
+    # List of generated file names to consider as generated in any folder
+    generated_names = {"main.py", "MLproject", "params.yaml", "run.py"}
     # Folders to clean
     folders = ["src", "components"]
+
+    # Fallback: if generated_files is not provided, build a set of generated files
+    fallback_generated = set()
+    # Add all generated-named files in root and under src/ and components/
+    for folder in ["."] + folders:
+        folder_path = output_path if folder == "." else output_path / folder
+        if folder_path.exists():
+            for dirpath, dirnames, filenames in os.walk(folder_path):
+                for fname in filenames:
+                    if fname in generated_names:
+                        fpath = Path(dirpath) / fname
+                        rel_path = str(fpath.relative_to(output_path))
+                        fallback_generated.add(rel_path)
+
+    # Use fallback if generated_files is None
+    effective_generated = generated_files if generated_files is not None else fallback_generated
 
     # Detect custom files in src/ and components/
     custom_files = []
@@ -226,8 +243,7 @@ def clean_project(output_path: Path, generated_files: set = None):
                 for fname in filenames:
                     fpath = Path(dirpath) / fname
                     rel_path = str(fpath.relative_to(output_path))
-                    # If generated_files is None or empty, treat all files as custom
-                    if not generated_files or rel_path not in generated_files:
+                    if rel_path not in effective_generated:
                         custom_files.append(rel_path)
 
     if custom_files:
@@ -243,7 +259,7 @@ def clean_project(output_path: Path, generated_files: set = None):
             raise SystemExit(1)
 
     # Remove generated root files
-    for fname in generated_root:
+    for fname in generated_names:
         f = output_path / fname
         if f.exists():
             f.unlink()
@@ -257,3 +273,7 @@ def clean_project(output_path: Path, generated_files: set = None):
     if params_path.exists():
         params_path.unlink()
     print("Clean complete.")
+
+if __name__ == "__main__":
+  import sys
+  clean_project(Path(sys.argv[1]))
