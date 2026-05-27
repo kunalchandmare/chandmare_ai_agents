@@ -203,10 +203,6 @@ class DependencyScanner:
                 resolved[import_name] = candidates[0]
                 continue
             if len(candidates) > 1:
-                # Debug output for ambiguous candidates
-                self.warnings.append(
-                    f"[DEBUG] Ambiguous candidates for import '{import_name}': {candidates}"
-                )
                 # Try to select a candidate that matches the import name exactly (normalized, case-insensitive)
                 normalized_import = self.normalize_package_name(import_name)
                 exact_match = None
