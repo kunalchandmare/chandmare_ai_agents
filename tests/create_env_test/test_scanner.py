@@ -63,7 +63,7 @@ class TestDependencyScanner(unittest.TestCase):
 
         self.assertEqual(result['demo'], 'demo-override')
 
-    def test_ambiguous_metadata_mapping_warns_and_skips(self):
+    def test_ambiguous_metadata_mapping_exact_match_selected(self):
         files = {'main.py': 'import requests'}
         create_test_python_project(self.temp_dir, files)
 
@@ -74,8 +74,11 @@ class TestDependencyScanner(unittest.TestCase):
         ):
             result = self.scanner.scan_directory(self.temp_dir)
 
-        self.assertNotIn('requests', result)
-        self.assertTrue(any('Ambiguous distribution mapping' in warning for warning in self.scanner.warnings))
+        # With the new rule, 'requests' should be selected as the mapping
+        self.assertIn('requests', result)
+        self.assertEqual(result['requests'], 'requests')
+        # There should be no ambiguous mapping warning
+        self.assertFalse(any('Ambiguous distribution mapping' in warning for warning in self.scanner.warnings))
 
     def test_unresolved_import_is_persisted_to_local_override(self):
         files = {'main.py': 'import unresolvedpkg'}

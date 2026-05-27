@@ -78,6 +78,7 @@ class DependencyScanner:
             self.warnings.append(f"No Python files found in {project_path}")
 
         for py_file in py_files:
+            self.warnings.append(f"[DEBUG] Scanning file: {py_file}")
             self._scan_file(py_file)
 
         return self._resolve_imports()
@@ -110,7 +111,10 @@ class DependencyScanner:
     def _scan_file(self, file_path: Path) -> None:
         """Scan a single Python file for imports using AST."""
         try:
-            content = file_path.read_text(encoding='utf-8', errors='ignore')
+            content = file_path.read_text(encoding='utf-8', errors='replace')
+            if content is None:
+                self.warnings.append(f"File {file_path} could not be read (None returned). Skipping.")
+                return
             tree = ast.parse(content)
 
             for node in ast.walk(tree):
@@ -179,6 +183,7 @@ class DependencyScanner:
         packaged_mapping = self._load_packaged_fallback_mapping()
         override_mapping = self._load_local_override_mapping()
 
+
         for import_name in sorted(self.found_imports):
             # 1. Check override mapping first (highest priority)
             override_mapped = self._lookup_mapping(override_mapping, import_name)
@@ -198,6 +203,20 @@ class DependencyScanner:
                 resolved[import_name] = candidates[0]
                 continue
             if len(candidates) > 1:
+                # Debug output for ambiguous candidates
+                self.warnings.append(
+                    f"[DEBUG] Ambiguous candidates for import '{import_name}': {candidates}"
+                )
+                # Try to select a candidate that matches the import name exactly (normalized, case-insensitive)
+                normalized_import = self.normalize_package_name(import_name)
+                exact_match = None
+                for candidate in candidates:
+                    if self.normalize_package_name(candidate) == normalized_import:
+                        exact_match = candidate
+                        break
+                if exact_match:
+                    resolved[import_name] = exact_match
+                    continue
                 self.warnings.append(
                     f"Ambiguous distribution mapping for import '{import_name}': [{', '.join(candidates)}]. "
                     "No package selected. Add explicit mapping to resolve."
@@ -205,6 +224,9 @@ class DependencyScanner:
                 continue
 
             # 4. Unresolved
+            self.warnings.append(
+                f"[DEBUG] No candidates found for import '{import_name}' (candidates: {candidates})"
+            )
             self.warnings.append(
                 f"Unresolved import '{import_name}'. Add a mapping in local override file at "
                 f"{self.get_default_override_mapping_path()}."
@@ -344,4 +366,6 @@ class DependencyScanner:
                 if isinstance(candidate, str) and candidate.strip()
             }
         )
+
+
 

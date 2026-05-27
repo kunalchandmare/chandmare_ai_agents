@@ -48,7 +48,7 @@ All scanning, resolution, file generation, and optional mapping updates happen l
   - `yaml` -> `pyyaml`
   - `PIL` -> `Pillow`
   - `bs4` -> `beautifulsoup4`
-- If multiple distributions are returned for one import, writes a warning and does not silently choose one.
+- If multiple distributions are returned for one import, and one of them matches the import name exactly, that candidate is selected automatically. If no exact match is found, a warning is written and no package is selected.
 - Resolves exact installed versions for used packages only.
 - Normalizes final package names before writing output manifests.
 - Can resolve versions from a specific local conda environment via `--env-name`.
