@@ -24,6 +24,13 @@ def generate_project(config_path: Path, pipeline_path: Path, output_path: Path) 
 
     output_path.mkdir(parents=True, exist_ok=True)
 
+    # Create shared/ at the project root as an empty utility package for user's shared code
+    shared_dir = output_path / "shared"
+    shared_dir.mkdir(parents=True, exist_ok=True)
+    init_file = shared_dir / "__init__.py"
+    if not init_file.exists():
+        init_file.write_text('"""Shared utilities for pipeline steps."""\n', encoding="utf-8")
+
     # 1. Render root template files (main.py, MLproject)
     _render_root_templates(config, pipeline, output_path)
 
@@ -33,12 +40,7 @@ def generate_project(config_path: Path, pipeline_path: Path, output_path: Path) 
     # 2. Generate src/<step>/ folders from pipeline.yaml steps
     steps = pipeline.get("steps", {})
     if steps:
-        # Create src/shared/ as an empty utility package for user's shared step code
-        shared_dir = output_path / "src" / "shared"
-        shared_dir.mkdir(parents=True, exist_ok=True)
-        init_file = shared_dir / "__init__.py"
-        if not init_file.exists():
-            init_file.write_text('"""Shared utilities for pipeline steps."""\n', encoding="utf-8")
+        pass  # shared/ is now at project root, not src/
 
     for step_name, step_config in steps.items():
         _generate_step_or_component(
