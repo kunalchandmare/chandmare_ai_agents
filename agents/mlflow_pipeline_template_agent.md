@@ -23,7 +23,7 @@ mlflow-pipeline-template clean <project_path>
 
 - **Only `project_path` given (no `--config`/`--pipeline`)** → creates project folder with `config.yaml.sample` and `pipeline.yaml.sample` for user to rename and edit. Does NOT generate the pipeline.
 - **`--config` and `--pipeline` given** → validates `.yaml`/`.yml` extension, parses both files, and generates the full MLflow pipeline structure in `project_path`.
-- **`clean <project_path>`** → removes all generated files (`main.py`, `MLproject`, `params.yaml`) and directories (`src/`, `components/`). Preserves `config.yaml`, `pipeline.yaml`, and `*.sample` files.
+- **`clean <project_path> [--keep <name> ...]`** → removes all generated files (`main.py`, `MLproject`, `params.yaml`) and directories (`src/`, `components/`). If `--keep` is provided, named steps/components are preserved along with the orchestrator files needed to keep the project runnable. Always preserves `config.yaml`, `pipeline.yaml`, and `*.sample` files.
 
 ## Options
 
@@ -56,6 +56,8 @@ All generation happens locally from the two input YAML files.
   - `mlflow` → uses `mlflow.log_artifact()` and `mlflow.artifacts.download_artifacts()`
   - `dvc` → uses `subprocess` calls to `dvc add`, `dvc push`, `dvc pull`
   - `wandb` → uses `wandb.init()`, `wandb.Artifact`, Windows-safe download
+- Generated orchestration code in `main.py` must always use safe `.get(..., default)` access for all config reads, including `main`, standard step/component arguments, and multiplicity entries. Direct indexing like `config[...][...]` must not be used for optional values.
+- Boolean arguments must be value-based end-to-end: `params.yaml` stores them as `true`/`false`, generated `main.py` forwards them as explicit parameter values, generated `MLproject` exposes them as value parameters, and generated `run.py` parses them from explicit values such as `--force_download true` or `--force_download false`. This applies to both regular arguments and multiplicity sub-arguments.
 - To ensure consistency, always generate all templates and code files directly from the parsed structure of pipeline.yaml and config.yaml, so that any change in the schema of these YAML files is automatically and accurately reflected in every generated artifact
 - No separate utility library is generated — backend code lives inline in each `run.py`.
 - `create_env_agent` is invoked as the final post-generation task (if installed) to produce all `conda.yml` files.
@@ -111,6 +113,7 @@ All generation happens locally from the two input YAML files.
       - `git add <custom_files>`
       - `git stash push -m 'Stash custom files before cleaning'`
     - Ask for confirmation before deleting any files. If the user does not confirm, abort the clean operation.
+- When running `clean --keep ...`, preserved step/component folders must not be deleted, and clean must leave the root orchestrator files in place so the kept parts remain runnable.
 
 ## Output rules
 
@@ -214,3 +217,4 @@ chandmare_ai_agents/
 - When running the clean operation, if any custom (non-generated) files are detected inside generated folders, prompt the user, advise to stash, and require confirmation before deletion.
 - Existing `run.py` files are never overwritten on re-run.
 - Arguments defined in `pipeline.yaml` auto-propagate to all generated files (`run.py`, `MLproject`, `params.yaml`).
+- Boolean arguments must never be converted into presence-only CLI flags; they must remain explicit value parameters throughout generation and execution.

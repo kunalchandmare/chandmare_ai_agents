@@ -54,6 +54,12 @@ def main():
 
     clean_parser = subparsers.add_parser("clean", help="Remove all generated artifacts from project")
     clean_parser.add_argument("project_path", help="Project directory to clean")
+    clean_parser.add_argument(
+        "--keep",
+        nargs="*",
+        default=None,
+        help="Step/component names to keep during cleaning (preserves their folders and orchestrator files)",
+    )
 
     args = parser.parse_args()
 
@@ -63,7 +69,7 @@ def main():
             print(f"Error: project directory not found: {project_path}", file=sys.stderr)
             sys.exit(1)
         # Use the generator's clean_project for advanced cleaning
-        clean_project(project_path)
+        clean_project(project_path, keep=set(args.keep or []))
         return 0
 
     if args.command == "generate":

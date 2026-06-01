@@ -74,55 +74,65 @@ def _render_root_templates(config: dict, pipeline: dict, output_path: Path) -> N
         keep_trailing_newline=True,
     )
 
-    steps = pipeline.get("steps", {})
-    components = pipeline.get("components", {})
-    # Patch: propagate multiplicity_arg and multiplicity_sub_args into steps/components for root templates
-    for step_name, step_cfg in steps.items():
-        arguments = step_cfg.get("arguments", {})
+    def _extract_multiplicity_metadata(node_cfg: dict) -> tuple[str | None, list[str] | None, dict[str, str] | None, dict[str, str]]:
+        """Extract multiplicity and non-multiplicity defaults for safe config access in templates."""
+        arguments = node_cfg.get("arguments", {})
         multiplicity_arg = None
         multiplicity_sub_args = None
+        multiplicity_sub_arg_defaults = None
+        arg_default_literals = {}
+
         for arg_name, arg_cfg in arguments.items():
-            if isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False):
-                multiplicity_arg = arg_name
-                if "args" in arg_cfg:
-                    sub_args = set()
-                    for sub_arg in arg_cfg.get("args", []):
-                        for sub_name in sub_arg.keys():
-                            sub_args.add(sub_name)
-                    multiplicity_sub_args = sorted(sub_args)
+            if not (isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False)):
+                if isinstance(arg_cfg, dict):
+                    arg_default_literals[arg_name] = repr(arg_cfg.get("default", ""))
                 else:
-                    sub_args = []
-                    for sub_name in arg_cfg.keys():
-                        if sub_name in ("multiplicity", "multiplicity_count"):
-                            continue
-                        sub_args.append(sub_name)
-                    multiplicity_sub_args = sub_args
+                    arg_default_literals[arg_name] = "''"
+                continue
+
+            multiplicity_arg = arg_name
+            defaults = {}
+
+            if "args" in arg_cfg:
+                names = set()
+                for sub_arg in arg_cfg.get("args", []):
+                    for sub_name, sub_cfg in sub_arg.items():
+                        names.add(sub_name)
+                        defaults[sub_name] = repr((sub_cfg or {}).get("default", ""))
+                multiplicity_sub_args = sorted(names)
+            else:
+                names = []
+                for sub_name, sub_cfg in arg_cfg.items():
+                    if sub_name in ("multiplicity", "multiplicity_count"):
+                        continue
+                    names.append(sub_name)
+                    defaults[sub_name] = repr((sub_cfg or {}).get("default", ""))
+                multiplicity_sub_args = names
+
+            multiplicity_sub_arg_defaults = defaults
+
+        return multiplicity_arg, multiplicity_sub_args, multiplicity_sub_arg_defaults, arg_default_literals
+
+    steps = pipeline.get("steps", {})
+    components = pipeline.get("components", {})
+
+    # Propagate multiplicity metadata into steps/components for root templates
+    for step_name, step_cfg in steps.items():
+        multiplicity_arg, multiplicity_sub_args, multiplicity_sub_arg_defaults, arg_default_literals = _extract_multiplicity_metadata(step_cfg)
+        step_cfg["arg_default_literals"] = arg_default_literals
         if multiplicity_arg:
             step_cfg["multiplicity_arg"] = multiplicity_arg
             step_cfg["multiplicity_sub_args"] = multiplicity_sub_args
+            step_cfg["multiplicity_sub_arg_defaults"] = multiplicity_sub_arg_defaults
+
     for comp_name, comp_cfg in components.items():
-        arguments = comp_cfg.get("arguments", {})
-        multiplicity_arg = None
-        multiplicity_sub_args = None
-        for arg_name, arg_cfg in arguments.items():
-            if isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False):
-                multiplicity_arg = arg_name
-                if "args" in arg_cfg:
-                    sub_args = set()
-                    for sub_arg in arg_cfg.get("args", []):
-                        for sub_name in sub_arg.keys():
-                            sub_args.add(sub_name)
-                    multiplicity_sub_args = sorted(sub_args)
-                else:
-                    sub_args = []
-                    for sub_name in arg_cfg.keys():
-                        if sub_name in ("multiplicity", "multiplicity_count"):
-                            continue
-                        sub_args.append(sub_name)
-                    multiplicity_sub_args = sub_args
+        multiplicity_arg, multiplicity_sub_args, multiplicity_sub_arg_defaults, arg_default_literals = _extract_multiplicity_metadata(comp_cfg)
+        comp_cfg["arg_default_literals"] = arg_default_literals
         if multiplicity_arg:
             comp_cfg["multiplicity_arg"] = multiplicity_arg
             comp_cfg["multiplicity_sub_args"] = multiplicity_sub_args
+            comp_cfg["multiplicity_sub_arg_defaults"] = multiplicity_sub_arg_defaults
+
     ctx = {
         **config,
         "steps": steps,
@@ -286,8 +296,8 @@ def _generate_params_yaml(pipeline: dict, output_path: Path, config: dict) -> No
     )
 
 
-def clean_project(output_path: Path, generated_files: set = None):
-    """Remove all generated artifacts except config.yaml and pipeline.yaml. Warn if custom files are detected."""
+def clean_project(output_path: Path, generated_files: set = None, keep: set = None):
+    """Remove all generated artifacts except config.yaml and pipeline.yaml, optionally keeping named steps/components."""
 
     # List of files/folders to preserve
     preserve = {"config.yaml", "pipeline.yaml", "config.yaml.sample", "pipeline.yaml.sample"}
@@ -295,6 +305,7 @@ def clean_project(output_path: Path, generated_files: set = None):
     generated_names = {"main.py", "MLproject", "params.yaml", "run.py"}
     # Folders to clean
     folders = ["src", "components"]
+    keep = {item for item in (keep or set()) if item}
 
     # Fallback: if generated_files is not provided, build a set of generated files
     fallback_generated = set()
@@ -312,7 +323,7 @@ def clean_project(output_path: Path, generated_files: set = None):
     # Use fallback if generated_files is None
     effective_generated = generated_files if generated_files is not None else fallback_generated
 
-    # Detect custom files in src/ and components/
+    # Detect custom files in src/ and components/ (skip kept step/component folders)
     custom_files = []
     for folder in folders:
         folder_path = output_path / folder
@@ -321,6 +332,9 @@ def clean_project(output_path: Path, generated_files: set = None):
                 for fname in filenames:
                     fpath = Path(dirpath) / fname
                     rel_path = str(fpath.relative_to(output_path))
+                    rel_parts = fpath.relative_to(output_path).parts
+                    if len(rel_parts) > 1 and rel_parts[0] in folders and rel_parts[1] in keep:
+                        continue
                     if rel_path not in effective_generated:
                         custom_files.append(rel_path)
 
@@ -336,19 +350,29 @@ def clean_project(output_path: Path, generated_files: set = None):
             print("Aborted clean.")
             raise SystemExit(1)
 
-    # Remove generated root files
-    for fname in generated_names:
-        f = output_path / fname
-        if f.exists():
-            f.unlink()
+    # Remove generated root files unless keeping any steps/components
+    if not keep:
+        for fname in generated_names:
+            f = output_path / fname
+            if f.exists():
+                f.unlink()
     # Remove generated folders
     for folder in folders:
         folder_path = output_path / folder
         if folder_path.exists():
-            shutil.rmtree(folder_path)
+            if keep:
+                for child in list(folder_path.iterdir()):
+                    if child.name in keep:
+                        continue
+                    if child.is_dir():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+            else:
+                shutil.rmtree(folder_path)
     # Remove params.yaml
     params_path = output_path / "params.yaml"
-    if params_path.exists():
+    if params_path.exists() and not keep:
         params_path.unlink()
     print("Clean complete.")
 

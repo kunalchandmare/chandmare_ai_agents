@@ -50,6 +50,49 @@ def test_root_mlproject_generated(project_dir):
     assert (project_dir / "MLproject").exists()
 
 
+def test_main_uses_get_for_standard_args(project_dir):
+    """main.py uses config.get fallbacks for non-multiplicity step arguments."""
+    generate_project(
+        project_dir / "config.yaml",
+        project_dir / "pipeline.yaml",
+        project_dir,
+    )
+    main_py = (project_dir / "main.py").read_text(encoding="utf-8")
+    assert 'main_cfg = config.get("main", {})' in main_py
+    assert '"input_artifact": str(step_cfg_runtime.get("input_artifact", \'\'))' in main_py
+    assert '"test_size": str(step_cfg_runtime.get("test_size", 0.2))' in main_py
+    assert '"random_seed": str(step_cfg_runtime.get("random_seed", 42))' in main_py
+
+
+def test_bool_arguments_remain_value_based_in_run_py(tmp_path):
+    """Boolean arguments are parsed as explicit values, not presence-only flags."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """project_name: bool_value_test
+artifact_backend: mlflow
+""",
+        encoding="utf-8",
+    )
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """steps:
+  download:
+    description: "Download step"
+    arguments:
+      force_download:
+        type: bool
+        default: false
+        description: "Force re-download"
+components: {}
+""",
+        encoding="utf-8",
+    )
+    generate_project(config_path, pipeline_path, tmp_path)
+    run_py = (tmp_path / "src" / "download" / "run.py").read_text(encoding="utf-8")
+    assert 'type=lambda x: x.lower() == "true"' in run_py
+    assert 'action="store_true"' not in run_py
+
+
 def test_wandb_import_in_run_py(project_dir):
     """With wandb backend, run.py should contain wandb import."""
     generate_project(
@@ -135,6 +178,40 @@ def test_optional_argument_has_default_in_mlproject(project_dir):
     )
     mlproject = (project_dir / "src" / "training" / "MLproject").read_text(encoding="utf-8")
     assert "default:" in mlproject
+
+
+def test_cli_clean_keep_preserves_selected_steps(project_dir):
+    """clean --keep preserves named steps/components and keeps root orchestrator files."""
+    generate_project(
+        project_dir / "config.yaml",
+        project_dir / "pipeline.yaml",
+        project_dir,
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "mlflow_pipeline_template.cli",
+            "clean",
+            str(project_dir),
+            "--keep",
+            "download",
+            "split",
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert (project_dir / "main.py").exists()
+    assert (project_dir / "MLproject").exists()
+    assert (project_dir / "params.yaml").exists()
+    assert (project_dir / "src" / "download").exists()
+    assert (project_dir / "src" / "split").exists()
+    assert not (project_dir / "src" / "convert").exists()
+    assert not (project_dir / "src" / "training").exists()
+    assert "Clean complete" in result.stdout
 
 
 # === CLI use case tests ===
@@ -324,10 +401,10 @@ components: {}
     main_py_path = tmp_path / "main.py"
     main_py = main_py_path.read_text(encoding="utf-8")
     # Check for loop over dataset_sources
-    assert f'for entry in config["download"]["dataset_sources"]' in main_py
+    assert 'for entry in step_cfg_runtime.get("dataset_sources", []):' in main_py
     # Check that only the defined sub-arguments are passed to mlflow.run
     for sub_arg in ["out_dir", "url"]:
-        assert f'"{sub_arg}": str(entry["{sub_arg}"])' in main_py
+        assert f'"{sub_arg}": str((entry or {{}}).get("{sub_arg}", \'\'))' in main_py
 
     # No simulation of orchestrator loop; only code structure is checked
 
@@ -452,13 +529,19 @@ components: {}
     main_py_path = tmp_path / "main.py"
     main_py = main_py_path.read_text(encoding="utf-8")
     # Check for loop over dataset_sources
-    assert f'for entry in config["download"]["dataset_sources"]' in main_py
-    # Check that all sub-arguments are passed to mlflow.run
-    for sub_arg in [
-        "out_dir", "extract_root", "force_download", "dataset_url",
-        "dataset_filename", "dataset_md5", "dataset_extract_to"
-    ]:
-        assert f'"{sub_arg}": str(entry["{sub_arg}"])' in main_py
+    assert 'for entry in step_cfg_runtime.get("dataset_sources", []):' in main_py
+    # Check that all sub-arguments are passed to mlflow.run using safe default lookups
+    expected_default_lookup = {
+        "out_dir": "''",
+        "extract_root": "'.'",
+        "force_download": "False",
+        "dataset_url": "None",
+        "dataset_filename": "None",
+        "dataset_md5": "None",
+        "dataset_extract_to": "None",
+    }
+    for sub_arg, default_literal in expected_default_lookup.items():
+        assert f'"{sub_arg}": str((entry or {{}}).get("{sub_arg}", {default_literal}))' in main_py
 
     result = subprocess.run(
         [sys.executable, str(main_py_path)],
@@ -468,3 +551,222 @@ components: {}
     # Instead of requiring success, assert that the error is about missing conda.yaml
     assert result.returncode != 0
     assert "conda.yaml" in result.stderr and "no such file was found" in result.stderr.lower()
+
+
+def test_main_runs_when_optional_args_are_missing(tmp_path):
+    """Generated main.py should run successfully with missing optional args by using safe defaults."""
+    from mlflow_pipeline_template.generator import generate_project
+    import subprocess
+    import sys
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """project_name: optional_args_runtime_test
+artifact_backend: mlflow
+""",
+        encoding="utf-8",
+    )
+
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """steps:
+  download:
+    description: "Step with required and optional args"
+    arguments:
+      input_path:
+        type: str
+        required: true
+        description: "Required input path"
+      threshold:
+        type: float
+        default: 0.75
+        description: "Optional threshold"
+      use_cache:
+        type: bool
+        default: false
+        description: "Optional cache flag"
+components: {}
+""",
+        encoding="utf-8",
+    )
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    # Stub modules so the generated main.py can execute without external dependencies.
+    (tmp_path / "hydra.py").write_text(
+        """import os
+
+def main(version_base=None, config_name=None, config_path=None):
+    def decorator(func):
+        def wrapper():
+            config = {
+                "main": {"project_name": "optional_args_runtime_test", "experiment_name": "dev", "steps": "download"},
+                "download": {"input_path": "/data/input"},
+            }
+            return func(config)
+        return wrapper
+    return decorator
+
+class utils:
+    @staticmethod
+    def get_original_cwd():
+        return os.getcwd()
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "mlflow.py").write_text(
+        """def run(uri, entry_point, env_manager=None, parameters=None):
+    print(f"MLFLOW_PARAMS:{parameters}")
+    return None
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "omegaconf.py").write_text(
+        """class DictConfig(dict):
+    pass
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(tmp_path / "main.py")],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "MLFLOW_PARAMS:" in result.stdout
+    assert "'input_path': '/data/input'" in result.stdout
+    assert "'threshold': '0.75'" in result.stdout
+    assert "'use_cache': 'False'" in result.stdout
+
+
+def test_dataset_sources_bool_argument_is_value_based_end_to_end(tmp_path):
+    """Multiplicity bool args should be forwarded as explicit True/False values, including default False when omitted."""
+    from mlflow_pipeline_template.generator import generate_project
+    import subprocess
+    import sys
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """project_name: dataset_sources_bool_test
+artifact_backend: mlflow
+""",
+        encoding="utf-8",
+    )
+
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """steps:
+  download:
+    description: "Download dataset sources"
+    arguments:
+      dataset_sources:
+        multiplicity: true
+        multiplicity_count: 2
+        args:
+          - out_dir:
+              type: str
+              required: true
+              description: "Download directory"
+            extract_root:
+              type: str
+              default: data
+              description: "Extraction root"
+            force_download:
+              type: bool
+              default: false
+              description: "Force re-download even if file already exists"
+            dataset_url:
+              type: str
+              default: null
+              description: "Dataset URL"
+            dataset_filename:
+              type: str
+              default: null
+              description: "Dataset filename"
+            dataset_md5:
+              type: str
+              default: null
+              description: "Dataset checksum"
+            dataset_extract_to:
+              type: str
+              default: data
+              description: "Extraction destination"
+components: {}
+""",
+        encoding="utf-8",
+    )
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    (tmp_path / "hydra.py").write_text(
+        """import os
+
+def main(version_base=None, config_name=None, config_path=None):
+    def decorator(func):
+        def wrapper():
+            config = {
+                "main": {"project_name": "dataset_sources_bool_test", "experiment_name": "dev", "steps": "download"},
+                "download": {
+                    "dataset_sources": [
+                        {
+                            "out_dir": r"C:\\Users\\fixc9dv\\Downloads",
+                            "extract_root": "data",
+                            "dataset_url": "https://zenodo.org/record/7811795/files/Robot@Home2_db.tgz",
+                            "dataset_filename": "Robot@Home2_db.tgz",
+                            "dataset_md5": "d34fb44c01f31c87be8ab14e5ecd0767",
+                            "dataset_extract_to": "data",
+                        },
+                        {
+                            "out_dir": r"C:\\Users\\fixc9dv\\Downloads",
+                            "extract_root": "data",
+                            "force_download": True,
+                            "dataset_url": "https://zenodo.org/record/7811795/files/Robot@Home2_db.tgz",
+                            "dataset_filename": "Robot@Home2_db.tgz",
+                            "dataset_md5": "d34fb44c01f31c87be8ab14e5ecd0767",
+                            "dataset_extract_to": "data",
+                        },
+                    ]
+                },
+            }
+            return func(config)
+        return wrapper
+    return decorator
+
+class utils:
+    @staticmethod
+    def get_original_cwd():
+        return os.getcwd()
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "mlflow.py").write_text(
+        """def run(uri, entry_point, env_manager=None, parameters=None):
+    print(f"MLFLOW_PARAMS:{parameters}")
+    return None
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "omegaconf.py").write_text(
+        """class DictConfig(dict):
+    pass
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(tmp_path / "main.py")],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    lines = [line for line in result.stdout.splitlines() if line.startswith("MLFLOW_PARAMS:")]
+    assert len(lines) == 2
+    assert "'force_download': 'False'" in lines[0]
+    assert "'force_download': 'True'" in lines[1]
+
+
