@@ -7,11 +7,9 @@ Reusable component: {{ step_name }}
 """
 import argparse
 import logging
-{% if artifact_backend == 'wandb' %}
-import wandb
-{% elif artifact_backend == 'dvc' %}
 import subprocess
-from pathlib import Path
+{% if tracking_backend == 'wandb' %}
+import wandb
 {% endif %}
 import mlflow
 
@@ -22,61 +20,59 @@ logger = logging.getLogger()
 def go(args):
     # No multiplicity handling; all arguments are single set
 
-        {% if artifact_backend == 'wandb' %}
-            run = wandb.init(job_type="{{ step_name }}")
-            run.config.update(vars(args))
+    {% if tracking_backend == 'wandb' %}
+        run = wandb.init(job_type="{{ step_name }}")
+        run.config.update(vars(args))
 
-            # --- Download input artifact (W&B) ---
-            # artifact = run.use_artifact("<artifact_name:version>")
-            # safe_name = artifact.name.replace(":", "_")
-            # artifact_dir = Path("safe_artifacts") / safe_name
-            # artifact_dir.mkdir(parents=True, exist_ok=True)
-            # artifact.download(root=str(artifact_dir))
+        # --- Resolve input artifact via DVC metadata (.dvc) ---
+        # subprocess.run(["dvc", "pull", "<input_path>.dvc"], check=True)
+        # run.config.update({"input_dvc_file": "<input_path>.dvc"})
 
-            # TODO: implement component logic (keep it schema-agnostic)
+        # TODO: implement component logic (keep it schema-agnostic)
 
-            # --- Upload output artifact (W&B) ---
-            # output = wandb.Artifact("<name>", type="<type>", description="<desc>")
-            # output.add_file("<path>")
-            # run.log_artifact(output)
-            # output.wait()
+        # --- Track output with DVC, then log the DVC metadata reference to W&B ---
+        # subprocess.run(["dvc", "add", "<output_path>"], check=True)
+        # subprocess.run(["dvc", "push"], check=True)
+        # output = wandb.Artifact("<name>", type="<type>", description="<desc>", metadata={"dvc_file": "<output_path>.dvc"})
+        # output.add_file("<output_path>.dvc")
+        # run.log_artifact(output)
 
-            run.finish()
-        {% elif artifact_backend == 'dvc' %}
-            # Optionally, enable MLflow tracking for DVC runs
-            # with mlflow.start_run():
+        run.finish()
+    {% else %}
+        with mlflow.start_run():
+            mlflow.set_tag("component_name", "{{ step_name }}")
             try:
                 # --- Pull input artifact (DVC) ---
-                input_dvc_file = "<file>.dvc"  # TODO: set actual input DVC file
-                logger.info(f"Pulling input artifact: {input_dvc_file}")
-                subprocess.run(["dvc", "pull", input_dvc_file], check=True)
+                # input_artifact_path = "<input_path>"
+                # input_dvc_file = "<input_path>.dvc"  # TODO: set actual input DVC file
+                # logger.info(f"Pulling input artifact: {input_artifact_path}")
+                # subprocess.run(["dvc", "pull", input_dvc_file], check=True)
+                # mlflow.set_tag("input_artifact", input_artifact_path)
 
                 # TODO: implement component logic (keep it schema-agnostic)
 
+                # --- Log metrics / params (MLflow tracking) ---
+                # mlflow.log_param("key", value)
+                # mlflow.log_metric("metric", value)
+
                 # --- Track and push output artifact (DVC) ---
-                output_path = "<output_path>"  # TODO: set actual output path
-                logger.info(f"Adding output artifact to DVC: {output_path}")
-                subprocess.run(["dvc", "add", output_path], check=True)
-                logger.info("Pushing output artifact to remote DVC storage")
-                subprocess.run(["dvc", "push"], check=True)
+                # output_path = "<output_path>"  # TODO: set actual output path
+                # logger.info(f"Adding output artifact to DVC: {output_path}")
+                # subprocess.run(["dvc", "add", output_path], check=True)
+                # mlflow.set_tag("output_artifact", output_path)
+                # logger.info("Pushing output artifact to remote DVC storage")
+                # subprocess.run(["dvc", "push"], check=True)
+
+                # --- Optionally also log artifact path to MLflow ---
+                # mlflow.log_artifact(output_path)
+
             except subprocess.CalledProcessError as e:
                 logger.error(f"DVC command failed: {e}")
                 raise
             except Exception as e:
                 logger.error(f"Unexpected error: {e}")
                 raise
-        {% else %}
-            with mlflow.start_run():
-                # --- Download input artifact (MLflow) ---
-                # local_path = mlflow.artifacts.download_artifacts(artifact_uri="<uri>")
-
-                # TODO: implement component logic (keep it schema-agnostic)
-
-                # --- Upload output artifact (MLflow) ---
-                # mlflow.log_artifact("<local_path>")
-
-                pass
-        {% endif %}
+    {% endif %}
 
 
 if __name__ == "__main__":

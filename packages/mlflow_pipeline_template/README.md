@@ -56,20 +56,19 @@ Project-level infrastructure configuration.
 |---|---|---|---|---|
 | `project_name` | str | **yes** | — | Project name. Used as MLflow project name and folder name. |
 | `project_slug` | str | no | auto from `project_name` | Python-safe slug. Auto-derived as lowercase with underscores. Override if needed. |
-| `artifact_backend` | str | no | `"mlflow"` | Artifact versioning backend. One of: `mlflow`, `dvc`, `wandb`. |
+| `tracking_backend` | str | no | "mlflow" | Experiment tracking backend. One of: `mlflow`, `wandb`. |
+| `artifact_backend` | str | no | "dvc" | Artifact storage/versioning backend. Currently `dvc` only; wandb is not a valid artifact backend. |
 | `mlflow_version` | str | no | `"2.14.1"` | MLflow version pinned in the project. |
-| `wandb_entity` | str | only if `wandb` | — | W&B entity (username or team). Required when `artifact_backend: wandb`. |
-| `wandb_project` | str | only if `wandb` | same as `project_name` | W&B project name. Required when `artifact_backend: wandb`. |
-| `wandb_version` | str | only if `wandb` | `"0.17.0"` | W&B SDK version. |
+| `wandb_entity` | str | only if `wandb` | — | W&B entity (username or team). Required when `tracking_backend: wandb`. |
+| `wandb_project` | str | only if `wandb` | same as `project_name` | W&B project name. Required when `tracking_backend: wandb`. |
+| `wandb_version` | str | only if `wandb` | "0.17.0" | W&B SDK version. |
 | `dvc_remote` | str | only if `dvc` | `""` | DVC remote URL (e.g. `s3://bucket/path`). Leave empty to configure later. |
 
-### `artifact_backend` choices
+### Backend choices
 
-| Value | What it does |
-|---|---|
-| `mlflow` | Uses MLflow's built-in artifact tracking. Zero extra setup. Default. |
-| `dvc` | Adds DVC for git-like data versioning. Best for large datasets (>100MB). |
-| `wandb` | Uses Weights & Biases for artifact tracking. Requires account. |
+- `tracking_backend`: `mlflow` (default) or `wandb`
+- `artifact_backend`: `dvc` (default); wandb is not supported as an artifact backend
+- Even when `tracking_backend` is `wandb`, the generated project still uses MLflow for orchestration in `main.py`.
 
 ---
 
@@ -145,7 +144,8 @@ main:
   steps: all
   experiment_name: dev
   project_name: image_classifier
-  artifact_backend: wandb
+  tracking_backend: wandb
+  artifact_backend: dvc
   wandb_entity: myteam
 
 download:

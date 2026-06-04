@@ -52,10 +52,11 @@ All generation happens locally from the two input YAML files.
 - Arguments defined in `pipeline.yaml` auto-propagate to `run.py` (argparse) and `MLproject` (parameters section). No manual duplication.
 - Steps (`pipeline.yaml` → `steps:`) generate under `src/<step_name>/`.
 - Components (`pipeline.yaml` → `components:`) generate under `components/<component_name>/`.
-- Artifact backend choice (`mlflow`, `dvc`, `wandb`) in `config.yaml` controls what imports and boilerplate appear in each generated `run.py`:
+- Tracking backend choice (`mlflow`, `wandb`) in `config.yaml` controls what imports and boilerplate appear in each generated `run.py`:
   - `mlflow` → uses `mlflow.log_artifact()` and `mlflow.artifacts.download_artifacts()`
-  - `dvc` → uses `subprocess` calls to `dvc add`, `dvc push`, `dvc pull`
   - `wandb` → uses `wandb.init()`, `wandb.Artifact`, Windows-safe download
+- The generated `main.py` still uses MLflow for orchestration even when `tracking_backend: wandb`; W&B is layered on top as the tracking backend.
+- Artifact backend choice is `dvc` only
 - Generated orchestration code in `main.py` must always use safe `.get(..., default)` access for all config reads, including `main`, standard step/component arguments, and multiplicity entries. Direct indexing like `config[...][...]` must not be used for optional values.
 - Boolean arguments must be value-based end-to-end: `params.yaml` stores them as `true`/`false`, generated `main.py` forwards them as explicit parameter values, generated `MLproject` exposes them as value parameters, and generated `run.py` parses them from explicit values such as `--force_download true` or `--force_download false`. This applies to both regular arguments and multiplicity sub-arguments.
 - To ensure consistency, always generate all templates and code files directly from the parsed structure of pipeline.yaml and config.yaml, so that any change in the schema of these YAML files is automatically and accurately reflected in every generated artifact
@@ -90,8 +91,9 @@ All generation happens locally from the two input YAML files.
 
 - File must have `.yaml` or `.yml` extension
 - `project_name` must be a non-empty string
-- `artifact_backend` must be one of: `mlflow`, `dvc`, `wandb`
-- If `artifact_backend: wandb`, `wandb_entity` must be non-empty
+- `tracking_backend` must be one of: `mlflow`, `wandb`
+- `artifact_backend` must be `dvc`
+- If `tracking_backend: wandb`, `wandb_entity` must be non-empty
 - If `artifact_backend: dvc`, `dvc_remote` must be a non-empty string (e.g. `s3://bucket/path`, `/local/path`)
 
 ### pipeline.yaml

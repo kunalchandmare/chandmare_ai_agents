@@ -18,6 +18,10 @@ def generate_project(config_path: Path, pipeline_path: Path, output_path: Path) 
     config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     pipeline = yaml.safe_load(pipeline_path.read_text(encoding="utf-8")) or {}
 
+    artifact_backend = config.get("artifact_backend", "dvc")
+    if artifact_backend != "dvc":
+        raise ValueError("artifact_backend must be 'dvc'; wandb is a tracking backend, not an artifact backend.")
+
     # Derive slug
     project_name = config.get("project_name", "my_project")
     config.setdefault("project_slug", project_name.lower().replace(" ", "_"))
@@ -59,8 +63,9 @@ def generate_project(config_path: Path, pipeline_path: Path, output_path: Path) 
         )
 
 
-    backend = config.get("artifact_backend", "mlflow")
-    print(f"Generated {len(steps)} steps and {len(components)} components (artifact_backend: {backend})")
+    tracking = config.get("tracking_backend", "mlflow")
+    artifact = config.get("artifact_backend", "dvc")
+    print(f"Generated {len(steps)} steps and {len(components)} components (tracking_backend: {tracking}, artifact_backend: {artifact})")
     if steps:
         print(f"  Steps: {', '.join(steps.keys())}")
     if components:
