@@ -4,20 +4,25 @@
 # Required: project name
 project_name: "my_ml_project"
 
-# Artifact backend: mlflow (default) | dvc | wandb
-artifact_backend: "mlflow"
+# Experiment tracking backend: mlflow (default) | wandb
+# Controls where metrics, parameters, and run metadata are logged.
+tracking_backend: "mlflow"
 
-# MLflow version
+# Artifact storage backend: dvc (default)
+# Controls where large files/artifacts are stored and versioned.
+artifact_backend: "dvc"
+
+# MLflow version (used when tracking_backend = "mlflow")
 mlflow_version: "2.14.1"
 
-# --- Only when artifact_backend = "wandb" ---
-# wandb_entity: "myteam"
-# wandb_project: "my_ml_project"
-# wandb_version: "0.17.0"
-
-# --- Required when artifact_backend = "dvc" ---
+# DVC remote (used when artifact_backend = "dvc")
 # dvc_remote: "s3://my-bucket/artifacts"
 # NOTE: On Windows, use forward slashes or single quotes for local paths:
 #   dvc_remote: 'C:\Data\my_artifacts'   ← single quotes (no escaping)
 #   dvc_remote: "C:/Data/my_artifacts"   ← forward slashes in double quotes
+
+# --- Only when tracking_backend = "wandb" (MLflow orchestration still applies) ---
+# wandb_entity: "myteam"
+# wandb_project: "my_ml_project"
+# wandb_version: "0.17.0"
 

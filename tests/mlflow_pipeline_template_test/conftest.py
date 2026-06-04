@@ -9,7 +9,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'packages' / 'mlflo
 
 CONFIG_WANDB = """\
 project_name: "image_classifier"
-artifact_backend: "wandb"
+tracking_backend: "wandb"
+artifact_backend: "dvc"
 mlflow_version: "2.14.1"
 wandb_entity: "myteam"
 wandb_project: "image_classifier"

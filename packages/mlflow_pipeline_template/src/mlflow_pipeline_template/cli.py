@@ -95,7 +95,11 @@ def main():
                 print(f"Error: pipeline file not found: {pipeline_path}", file=sys.stderr)
                 sys.exit(1)
 
-            generate_project(config_path, pipeline_path, project_path)
+            try:
+                generate_project(config_path, pipeline_path, project_path)
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                sys.exit(1)
             print(f"Done! Project generated at: {project_path}")
             return 0
 

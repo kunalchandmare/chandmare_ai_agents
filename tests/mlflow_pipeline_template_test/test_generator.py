@@ -1,6 +1,5 @@
 import pytest
-"""Tests for mlflow_pipeline_template generator with wandb backend and 4 steps."""
-from pathlib import Path
+"""Tests for mlflow_pipeline_template generator with W&B tracking and 4 steps."""
 
 from mlflow_pipeline_template.generator import generate_project
 
@@ -69,7 +68,8 @@ def test_bool_arguments_remain_value_based_in_run_py(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         """project_name: bool_value_test
-artifact_backend: mlflow
+tracking_backend: mlflow
+artifact_backend: dvc
 """,
         encoding="utf-8",
     )
@@ -93,8 +93,8 @@ components: {}
     assert 'action="store_true"' not in run_py
 
 
-def test_wandb_import_in_run_py(project_dir):
-    """With wandb backend, run.py should contain wandb import."""
+def test_tracking_backend_wandb_import_in_run_py(project_dir):
+    """With W&B tracking enabled, run.py should contain wandb import."""
     generate_project(
         project_dir / "config.yaml",
         project_dir / "pipeline.yaml",
@@ -104,15 +104,16 @@ def test_wandb_import_in_run_py(project_dir):
     assert "wandb" in run_py, "wandb backend code missing from run.py"
 
 
-def test_no_dvc_in_run_py(project_dir):
-    """With wandb backend chosen, dvc code should NOT appear."""
+def test_tracking_backend_wandb_includes_dvc_metadata_reference_in_run_py(project_dir):
+    """With W&B tracking chosen, template guidance should still reference DVC metadata (.dvc) for artifact lineage."""
     generate_project(
         project_dir / "config.yaml",
         project_dir / "pipeline.yaml",
         project_dir,
     )
     run_py = (project_dir / "src" / "training" / "run.py").read_text(encoding="utf-8")
-    assert "dvc" not in run_py.lower() or "dvc" not in run_py
+    assert "<output_path>.dvc" in run_py
+    assert "metadata={\"dvc_file\": \"<output_path>.dvc\"}" in run_py
 
 
 def test_step_arguments_in_mlproject(project_dir):
@@ -139,6 +140,26 @@ def test_step_arguments_in_run_py_argparse(project_dir):
     assert "--train_artifact" in run_py
     assert "--epochs" in run_py
     assert "--learning_rate" in run_py
+
+
+def test_artifact_backend_rejects_wandb(tmp_path):
+    """artifact_backend=wandb should fail fast because wandb is not a data-versioning backend."""
+    from mlflow_pipeline_template.generator import generate_project
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """project_name: invalid_artifact_backend
+tracking_backend: mlflow
+artifact_backend: wandb
+""",
+        encoding="utf-8",
+    )
+
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text("steps: {}\ncomponents: {}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="artifact_backend must be 'dvc'"):
+        generate_project(config_path, pipeline_path, tmp_path)
 
 
 def test_mlproject_type_mapping(project_dir):
@@ -337,7 +358,8 @@ def test_params_yaml_generated_with_defaults(project_dir):
     assert params["main"]["steps"] == "all"
     assert params["main"]["experiment_name"] == "dev"
     assert params["main"]["project_name"] == "image_classifier"
-    assert params["main"]["artifact_backend"] == "wandb"
+    assert params["main"]["tracking_backend"] == "wandb"
+    assert params["main"]["artifact_backend"] == "dvc"
     assert params["main"]["wandb_entity"] == "myteam"
 
     # Check step defaults from pipeline.yaml
@@ -562,7 +584,8 @@ def test_main_runs_when_optional_args_are_missing(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         """project_name: optional_args_runtime_test
-artifact_backend: mlflow
+tracking_backend: mlflow
+artifact_backend: dvc
 """,
         encoding="utf-8",
     )
@@ -651,7 +674,8 @@ def test_dataset_sources_bool_argument_is_value_based_end_to_end(tmp_path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         """project_name: dataset_sources_bool_test
-artifact_backend: mlflow
+tracking_backend: mlflow
+artifact_backend: dvc
 """,
         encoding="utf-8",
     )

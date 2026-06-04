@@ -34,22 +34,26 @@ The user provides exactly **two YAML files**:
 
 ```yaml
 project_name: "my_ml_project"
-artifact_backend: "mlflow"       # mlflow | dvc | wandb
+tracking_backend: "mlflow"       # mlflow | wandb
+artifact_backend: "dvc"          # dvc only
 mlflow_version: "2.14.1"
-# wandb_entity: "myteam"        # only if artifact_backend: wandb
-# wandb_project: "my_project"   # only if artifact_backend: wandb
-# dvc_remote: "s3://bucket"     # only if artifact_backend: dvc
+# wandb_entity: "myteam"        # only if tracking_backend: wandb (MLflow orchestration still applies)
+# wandb_project: "my_project"   # only if tracking_backend: wandb (MLflow orchestration still applies)
+dvc_remote: "path/storage"     # example for artifact_backend: dvc
 ```
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `project_name` | str | *(required)* | Project name, used as MLflow project name and folder name |
-| `artifact_backend` | str | `"mlflow"` | Artifact versioning backend: `mlflow`, `dvc`, or `wandb` |
+| `tracking_backend` | str | `"mlflow"` | Experiment tracking backend: `mlflow` or `wandb` |
+| `artifact_backend` | str | `"dvc"` | Artifact versioning backend: `dvc` only |
 | `mlflow_version` | str | `"2.14.1"` | MLflow version to pin in generated environments |
-| `wandb_entity` | str | `""` | W&B entity (only when `artifact_backend: wandb`) |
-| `wandb_project` | str | `project_name` | W&B project name (only when `artifact_backend: wandb`) |
-| `wandb_version` | str | `"0.17.0"` | W&B version (only when `artifact_backend: wandb`) |
+| `wandb_entity` | str | `""` | W&B entity (only when `tracking_backend: wandb`) |
+| `wandb_project` | str | `project_name` | W&B project name (only when `tracking_backend: wandb`) |
+| `wandb_version` | str | `"0.17.0"` | W&B version (only when `tracking_backend: wandb`) |
 | `dvc_remote` | str | `""` | DVC remote URL (only when `artifact_backend: dvc`) |
+
+Even when `tracking_backend` is `wandb`, the generated project still uses MLflow for orchestration in `main.py`.
 
 ### 2. `pipeline.yaml` — Pipeline definition
 
@@ -149,19 +153,19 @@ Does the step know column names, data types, or business rules?
 
 ---
 
-## Artifact Backends
+## Backend Roles
 
-### MLflow (default)
+### MLflow
 
-Zero setup. Uses `mlflow.log_artifact()` and `mlflow.artifacts.download_artifacts()`.
+Used for orchestration and experiment logging in the generated project.
 
-### DVC (opt-in)
+### DVC
 
-Git-like data versioning. Uses `dvc add`, `dvc push`, `dvc pull`. Best for large datasets shared across a team.
+Git-like data versioning for large datasets. Uses `dvc add`, `dvc push`, `dvc pull`.
 
-### W&B (opt-in)
+### W&B
 
-Cloud artifact tracking with lineage UI. Uses `wandb.Artifact`. Requires account.
+Tracking backend only. Enable it with `tracking_backend: wandb`; it works alongside the MLflow-based orchestrator and is not an artifact backend.
 
 ---
 
