@@ -8,6 +8,7 @@ Pipeline step: {{ step_name }}
 import argparse
 import logging
 import subprocess
+import sys
 {% if tracking_backend == 'wandb' %}
 import wandb
 {% endif %}
@@ -84,4 +85,4 @@ if __name__ == "__main__":
     {% endif %}
 {% endfor %}
     args = parser.parse_args()
-    go(args)
+    sys.exit(go(args))
