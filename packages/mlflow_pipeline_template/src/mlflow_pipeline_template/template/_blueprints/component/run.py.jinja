@@ -9,14 +9,25 @@ import argparse
 import logging
 import subprocess
 import sys
+from pathlib import Path
 {% if tracking_backend == 'wandb' %}
 import wandb
 {% endif %}
 import mlflow
 
+def _bootstrap_project_root() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    project_root_str = str(project_root)
+    if project_root_str not in sys.path:
+        sys.path.insert(0, project_root_str)
+
+
+_bootstrap_project_root()
+
+from shared.helpers import parse_bool, parse_optional_bool, parse_optional_float, parse_optional_int, parse_optional_str
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)-15s %(message)s")
 logger = logging.getLogger()
-
 
 def go(args):
     # No multiplicity handling; all arguments are single set
@@ -82,14 +93,37 @@ if __name__ == "__main__":
     {% set arg_type = arg_cfg.get('type', 'str') %}
     {% if arg_type == 'bool' %}
     parser.add_argument(
-        "--{{ arg_name }}", type=lambda x: x.lower() == "true",
-        required={{ 'True' if arg_cfg.get('required', False) else 'False' }},
+        "--{{ arg_name }}", type={{ 'parse_optional_bool' if arg_cfg.get('is_nullable', False) else 'parse_bool' }},
+        required={{ 'True' if arg_cfg.get('required', False) else 'False' }},{% if not arg_cfg.get('required', False) and arg_cfg.get('has_default', False) %}
+        default={{ arg_cfg.get('default_literal', 'None') }},{% endif %}
         help="{{ arg_cfg.get('description', '') }} (true/false)"
+    )
+    {% elif arg_type == 'int' %}
+    parser.add_argument(
+        "--{{ arg_name }}", type={{ 'parse_optional_int' if arg_cfg.get('is_nullable', False) else 'int' }},
+        required={{ 'True' if arg_cfg.get('required', False) else 'False' }},{% if not arg_cfg.get('required', False) and arg_cfg.get('has_default', False) %}
+        default={{ arg_cfg.get('default_literal', 'None') }},{% endif %}
+        help="{{ arg_cfg.get('description', '') }}"
+    )
+    {% elif arg_type == 'float' %}
+    parser.add_argument(
+        "--{{ arg_name }}", type={{ 'parse_optional_float' if arg_cfg.get('is_nullable', False) else 'float' }},
+        required={{ 'True' if arg_cfg.get('required', False) else 'False' }},{% if not arg_cfg.get('required', False) and arg_cfg.get('has_default', False) %}
+        default={{ arg_cfg.get('default_literal', 'None') }},{% endif %}
+        help="{{ arg_cfg.get('description', '') }}"
+    )
+    {% elif arg_type == 'str' %}
+    parser.add_argument(
+        "--{{ arg_name }}", type={{ 'parse_optional_str' if arg_cfg.get('is_nullable', False) else 'str' }},
+        required={{ 'True' if arg_cfg.get('required', False) else 'False' }},{% if not arg_cfg.get('required', False) and arg_cfg.get('has_default', False) %}
+        default={{ arg_cfg.get('default_literal', 'None') }},{% endif %}
+        help="{{ arg_cfg.get('description', '') }}"
     )
     {% else %}
     parser.add_argument(
         "--{{ arg_name }}", type={{ arg_type }},
-        required={{ 'True' if arg_cfg.get('required', False) else 'False' }},
+        required={{ 'True' if arg_cfg.get('required', False) else 'False' }},{% if not arg_cfg.get('required', False) and arg_cfg.get('has_default', False) %}
+        default={{ arg_cfg.get('default_literal', 'None') }},{% endif %}
         help="{{ arg_cfg.get('description', '') }}"
     )
     {% endif %}

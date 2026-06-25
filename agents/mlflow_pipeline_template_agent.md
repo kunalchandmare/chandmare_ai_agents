@@ -1,6 +1,6 @@
 # mlflow_pipeline_template_agent specification
 
-**Author:** Chandmare, Kunal  
+**Author:** Chandmare, Kunal
 **Model:** Claude Opus 4  
 **Created:** 2026-05-06
 

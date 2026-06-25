@@ -11,18 +11,18 @@ entry_points:
 {% for sub_name, sub_cfg in sub_arg.items() %}
       {{ sub_name }}:
         description: "{{ sub_cfg.get('description', '') }}"
-        type: {% set t = sub_cfg.get('type', 'str') %}{% if t == 'str' %}string{% elif t == 'int' or t == 'float' %}float{% elif t == 'bool' %}string{% else %}{{ t }}{% endif %}
+        type: {% set t = sub_cfg.get('type', 'str') %}{% if sub_cfg.get('is_nullable', false) %}string{% elif t == 'str' %}string{% elif t == 'int' or t == 'float' %}float{% elif t == 'bool' %}string{% else %}{{ t }}{% endif %}
 {% if not sub_cfg.get('required', false) %}
-        default: "{{ sub_cfg.get('default', '') }}"
+        default: {% if sub_cfg.get('is_nullable', false) %}""{% else %}"{{ sub_cfg.get('default', '') }}"{% endif %}
 {% endif %}
 {% endfor %}
 {% endfor %}
 {% else %}
       {{ arg_name }}:
         description: "{{ arg_cfg.get('description', '') }}"
-        type: {% set t = arg_cfg.get('type', 'str') %}{% if t == 'str' %}string{% elif t == 'int' or t == 'float' %}float{% elif t == 'bool' %}string{% else %}{{ t }}{% endif %}
+        type: {% set t = arg_cfg.get('type', 'str') %}{% if arg_cfg.get('is_nullable', false) %}string{% elif t == 'str' %}string{% elif t == 'int' or t == 'float' %}float{% elif t == 'bool' %}string{% else %}{{ t }}{% endif %}
 {% if not arg_cfg.get('required', false) %}
-        default: "{{ arg_cfg.get('default', '') }}"
+        default: {% if arg_cfg.get('is_nullable', false) %}""{% else %}"{{ arg_cfg.get('default', '') }}"{% endif %}
 {% endif %}
 {% endif %}
 {% endfor %}

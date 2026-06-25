@@ -34,6 +34,7 @@ def generate_project(config_path: Path, pipeline_path: Path, output_path: Path) 
     init_file = shared_dir / "__init__.py"
     if not init_file.exists():
         init_file.write_text('"""Shared utilities for pipeline steps."""\n', encoding="utf-8")
+    _ensure_shared_helpers(shared_dir)
 
     # 1. Render root template files (main.py, MLproject)
     _render_root_templates(config, pipeline, output_path)
@@ -153,6 +154,88 @@ def _render_root_templates(config: dict, pipeline: dict, output_path: Path) -> N
             (output_path / out_name).write_text(rendered, encoding="utf-8")
 
 
+def _with_argument_metadata(arg_cfg: dict) -> dict:
+    """Normalize argument config and expose default/nullability metadata for templates."""
+    fixed_cfg = dict(arg_cfg or {})
+    if "description" not in fixed_cfg:
+        fixed_cfg["description"] = ""
+
+    has_default = "default" in fixed_cfg
+    fixed_cfg["has_default"] = has_default
+    fixed_cfg["default_literal"] = repr(fixed_cfg.get("default")) if has_default else "None"
+    fixed_cfg["is_nullable"] = has_default and fixed_cfg.get("default") is None
+    return fixed_cfg
+
+
+def _ensure_shared_helpers(shared_dir: Path) -> None:
+    """Create shared/helpers.py with parser utilities used by generated run.py files."""
+    helpers_path = shared_dir / "helpers.py"
+    if helpers_path.exists():
+        return
+
+    helpers_path.write_text(
+        """\
+import argparse
+
+NULL_TOKENS = {"", "null", "none"}
+
+
+def parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "y"}:
+        return True
+    if normalized in {"false", "0", "no", "n"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Expected a boolean value, got: {value!r}")
+
+
+def parse_optional_str(value):
+    if value is None:
+        return None
+    text = str(value)
+    if text.strip().lower() in NULL_TOKENS:
+        return None
+    return text
+
+
+def parse_optional_int(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text.lower() in NULL_TOKENS:
+        return None
+    try:
+        return int(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Expected an integer value, got: {value!r}") from exc
+
+
+def parse_optional_float(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text.lower() in NULL_TOKENS:
+        return None
+    try:
+        return float(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Expected a float value, got: {value!r}") from exc
+
+
+def parse_optional_bool(value):
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in NULL_TOKENS:
+        return None
+    return parse_bool(text)
+""",
+        encoding="utf-8",
+    )
+
+
 def _generate_step_or_component(
     name: str, step_config: dict, config: dict,
     blueprint_type: str, output_dir: Path
@@ -191,10 +274,7 @@ def _generate_step_or_component(
                 multiplicity_sub_args = sub_args
                 for sub_arg in arg_cfg.get("args", []):
                     for sub_name, sub_cfg in sub_arg.items():
-                        fixed_sub_cfg = dict(sub_cfg)
-                        if "description" not in fixed_sub_cfg:
-                            fixed_sub_cfg["description"] = ""
-                        processed_arguments[sub_name] = fixed_sub_cfg
+                        processed_arguments[sub_name] = _with_argument_metadata(sub_cfg)
             else:
                 sub_args = []
                 for sub_name in arg_cfg.keys():
@@ -205,15 +285,9 @@ def _generate_step_or_component(
                 for sub_name, sub_cfg in arg_cfg.items():
                     if sub_name in ("multiplicity", "multiplicity_count"):
                         continue
-                    fixed_sub_cfg = dict(sub_cfg)
-                    if "description" not in fixed_sub_cfg:
-                        fixed_sub_cfg["description"] = ""
-                    processed_arguments[sub_name] = fixed_sub_cfg
+                    processed_arguments[sub_name] = _with_argument_metadata(sub_cfg)
         else:
-            fixed_cfg = dict(arg_cfg)
-            if "description" not in fixed_cfg:
-                fixed_cfg["description"] = ""
-            processed_arguments[arg_name] = fixed_cfg
+            processed_arguments[arg_name] = _with_argument_metadata(arg_cfg)
     ctx = {
         **config,
         "step_name": name,

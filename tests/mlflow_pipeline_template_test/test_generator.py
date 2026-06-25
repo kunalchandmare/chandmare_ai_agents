@@ -58,9 +58,9 @@ def test_main_uses_get_for_standard_args(project_dir):
     )
     main_py = (project_dir / "main.py").read_text(encoding="utf-8")
     assert 'main_cfg = config.get("main", {})' in main_py
-    assert '"input_artifact": str(step_cfg_runtime.get("input_artifact", \'\'))' in main_py
-    assert '"test_size": str(step_cfg_runtime.get("test_size", 0.2))' in main_py
-    assert '"random_seed": str(step_cfg_runtime.get("random_seed", 42))' in main_py
+    assert '"input_artifact": _serialize_param(step_cfg_runtime.get("input_artifact", \'\'))' in main_py
+    assert '"test_size": _serialize_param(step_cfg_runtime.get("test_size", 0.2))' in main_py
+    assert '"random_seed": _serialize_param(step_cfg_runtime.get("random_seed", 42))' in main_py
 
 
 def test_bool_arguments_remain_value_based_in_run_py(tmp_path):
@@ -89,8 +89,41 @@ components: {}
     )
     generate_project(config_path, pipeline_path, tmp_path)
     run_py = (tmp_path / "src" / "download" / "run.py").read_text(encoding="utf-8")
-    assert 'type=lambda x: x.lower() == "true"' in run_py
+    assert 'from shared.helpers import parse_bool' in run_py
+    assert 'type=parse_bool' in run_py
     assert 'action="store_true"' not in run_py
+
+
+def test_nullable_float_default_uses_optional_float_parser_in_run_py(tmp_path):
+    """Optional float args with default null should parse to Python None when omitted or passed as null/blank."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """project_name: nullable_float_test
+tracking_backend: mlflow
+artifact_backend: dvc
+""",
+        encoding="utf-8",
+    )
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """steps:
+  score:
+    description: "Nullable float step"
+    arguments:
+      threshold:
+        type: float
+        default: null
+        description: "Optional threshold"
+components: {}
+""",
+        encoding="utf-8",
+    )
+
+    generate_project(config_path, pipeline_path, tmp_path)
+    run_py = (tmp_path / "src" / "score" / "run.py").read_text(encoding="utf-8")
+    assert 'from shared.helpers import parse_bool, parse_optional_bool, parse_optional_float, parse_optional_int, parse_optional_str' in run_py
+    assert '"--threshold", type=parse_optional_float,' in run_py
+    assert 'default=None,' in run_py
 
 
 def test_tracking_backend_wandb_import_in_run_py(project_dir):
@@ -188,6 +221,7 @@ def test_shared_utils_folder_created(project_dir):
     shared = project_dir / "shared"
     assert shared.exists()
     assert (shared / "__init__.py").exists()
+    assert (shared / "helpers.py").exists()
 
 
 def test_optional_argument_has_default_in_mlproject(project_dir):
@@ -426,7 +460,7 @@ components: {}
     assert 'for entry in step_cfg_runtime.get("dataset_sources", []):' in main_py
     # Check that only the defined sub-arguments are passed to mlflow.run
     for sub_arg in ["out_dir", "url"]:
-        assert f'"{sub_arg}": str((entry or {{}}).get("{sub_arg}", \'\'))' in main_py
+            assert f'"{sub_arg}": _serialize_param((entry or {{}}).get("{sub_arg}", \'\'))' in main_py
 
     # No simulation of orchestrator loop; only code structure is checked
 
@@ -563,7 +597,7 @@ components: {}
         "dataset_extract_to": "None",
     }
     for sub_arg, default_literal in expected_default_lookup.items():
-        assert f'"{sub_arg}": str((entry or {{}}).get("{sub_arg}", {default_literal}))' in main_py
+        assert f'"{sub_arg}": _serialize_param((entry or {{}}).get("{sub_arg}", {default_literal}))' in main_py
 
     result = subprocess.run(
         [sys.executable, str(main_py_path)],
@@ -663,6 +697,82 @@ class utils:
     assert "'input_path': '/data/input'" in result.stdout
     assert "'threshold': '0.75'" in result.stdout
     assert "'use_cache': 'False'" in result.stdout
+
+
+def test_main_serializes_nullable_float_default_none_as_empty_string(tmp_path):
+    """Generated main.py should forward missing nullable float values as empty strings, not the literal 'None'."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """project_name: nullable_float_main_test
+tracking_backend: mlflow
+artifact_backend: dvc
+""",
+        encoding="utf-8",
+    )
+
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """steps:
+  evaluate:
+    description: "Step with nullable threshold"
+    arguments:
+      threshold:
+        type: float
+        default: null
+        description: "Optional threshold"
+components: {}
+""",
+        encoding="utf-8",
+    )
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    (tmp_path / "hydra.py").write_text(
+        """import os
+
+def main(version_base=None, config_name=None, config_path=None):
+    def decorator(func):
+        def wrapper():
+            config = {
+                "main": {"project_name": "nullable_float_main_test", "experiment_name": "dev", "steps": "evaluate"},
+                "evaluate": {},
+            }
+            return func(config)
+        return wrapper
+    return decorator
+
+class utils:
+    @staticmethod
+    def get_original_cwd():
+        return os.getcwd()
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "mlflow.py").write_text(
+        """def run(uri, entry_point, env_manager=None, parameters=None):
+    print(f"MLFLOW_PARAMS:{parameters}")
+    return None
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / "omegaconf.py").write_text(
+        """class DictConfig(dict):
+    pass
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [sys.executable, str(tmp_path / "main.py")],
+        cwd=str(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "MLFLOW_PARAMS:" in result.stdout
+    assert "'threshold': ''" in result.stdout
+    assert "'threshold': 'None'" not in result.stdout
 
 
 def test_dataset_sources_bool_argument_is_value_based_end_to_end(tmp_path):

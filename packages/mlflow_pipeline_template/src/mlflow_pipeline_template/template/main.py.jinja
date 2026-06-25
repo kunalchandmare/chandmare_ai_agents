@@ -15,6 +15,11 @@ from omegaconf import DictConfig
 import wandb
 {% endif %}
 
+
+def _serialize_param(value):
+    return "" if value is None else str(value)
+
+
 _steps = [
 {%- for name in step_names %}
     "{{ name }}",
@@ -55,7 +60,7 @@ def go(config: DictConfig):
                 env_manager="local",
                 parameters={
 {%- for sub_arg_name in multiplicity_sub_args %}
-                    "{{ sub_arg_name }}": str((entry or {}).get("{{ sub_arg_name }}", {{ multiplicity_sub_arg_defaults.get(sub_arg_name, "''") }})),
+                    "{{ sub_arg_name }}": _serialize_param((entry or {}).get("{{ sub_arg_name }}", {{ multiplicity_sub_arg_defaults.get(sub_arg_name, "''") }})),
 {%- endfor %}
                 },
             )
@@ -66,7 +71,7 @@ def go(config: DictConfig):
             env_manager="local",
             parameters={
 {%- for arg_name, arg_cfg in (step_cfg.get('arguments', {}) or {}).items() %}
-                "{{ arg_name }}": str(step_cfg_runtime.get("{{ arg_name }}", {{ arg_default_literals.get(arg_name, "''") }})),
+                "{{ arg_name }}": _serialize_param(step_cfg_runtime.get("{{ arg_name }}", {{ arg_default_literals.get(arg_name, "''") }})),
 {%- endfor %}
             },
         )
@@ -93,7 +98,7 @@ def go(config: DictConfig):
                 env_manager="local",
                 parameters={
 {%- for sub_arg_name in multiplicity_sub_args %}
-                    "{{ sub_arg_name }}": str((entry or {}).get("{{ sub_arg_name }}", {{ multiplicity_sub_arg_defaults.get(sub_arg_name, "''") }})),
+                    "{{ sub_arg_name }}": _serialize_param((entry or {}).get("{{ sub_arg_name }}", {{ multiplicity_sub_arg_defaults.get(sub_arg_name, "''") }})),
 {%- endfor %}
                 },
             )
@@ -104,7 +109,7 @@ def go(config: DictConfig):
             env_manager="local",
             parameters={
 {%- for arg_name, arg_cfg in (comp_cfg.get('arguments', {}) or {}).items() %}
-                "{{ arg_name }}": str(comp_cfg_runtime.get("{{ arg_name }}", {{ arg_default_literals.get(arg_name, "''") }})),
+                "{{ arg_name }}": _serialize_param(comp_cfg_runtime.get("{{ arg_name }}", {{ arg_default_literals.get(arg_name, "''") }})),
 {%- endfor %}
             },
         )
