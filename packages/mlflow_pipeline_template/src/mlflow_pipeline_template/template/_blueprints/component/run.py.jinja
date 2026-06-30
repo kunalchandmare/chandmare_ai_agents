@@ -9,12 +9,15 @@ import argparse
 import logging
 import subprocess
 import sys
+{% if requires_shared_helpers %}
 from pathlib import Path
+{% endif %}
 {% if tracking_backend == 'wandb' %}
 import wandb
 {% endif %}
 import mlflow
 
+{% if requires_shared_helpers %}
 def _bootstrap_project_root() -> None:
     project_root = Path(__file__).resolve().parents[2]
     project_root_str = str(project_root)
@@ -24,7 +27,8 @@ def _bootstrap_project_root() -> None:
 
 _bootstrap_project_root()
 
-from shared.helpers import parse_bool, parse_optional_bool, parse_optional_float, parse_optional_int, parse_optional_str
+from shared.helpers import {{ helper_imports | join(', ') }}
+{% endif %}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)-15s %(message)s")
 logger = logging.getLogger()

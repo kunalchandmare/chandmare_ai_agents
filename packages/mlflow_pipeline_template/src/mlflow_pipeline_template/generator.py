@@ -262,6 +262,7 @@ def _generate_step_or_component(
     processed_arguments = {}
     multiplicity_sub_args = None
     multiplicity_arg = None
+    helper_imports = set()
     for arg_name, arg_cfg in arguments.items():
         if isinstance(arg_cfg, dict) and arg_cfg.get("multiplicity", False):
             multiplicity_arg = arg_name
@@ -288,6 +289,20 @@ def _generate_step_or_component(
                     processed_arguments[sub_name] = _with_argument_metadata(sub_cfg)
         else:
             processed_arguments[arg_name] = _with_argument_metadata(arg_cfg)
+
+    # Helpers are only required when boolean parsing or nullable parsing is needed.
+    for arg_cfg in processed_arguments.values():
+        arg_type = str(arg_cfg.get("type", "str"))
+        is_nullable = bool(arg_cfg.get("is_nullable", False))
+        if arg_type == "bool":
+            helper_imports.add("parse_optional_bool" if is_nullable else "parse_bool")
+        elif is_nullable and arg_type == "int":
+            helper_imports.add("parse_optional_int")
+        elif is_nullable and arg_type == "float":
+            helper_imports.add("parse_optional_float")
+        elif is_nullable and arg_type == "str":
+            helper_imports.add("parse_optional_str")
+
     ctx = {
         **config,
         "step_name": name,
@@ -295,6 +310,8 @@ def _generate_step_or_component(
         "arguments": processed_arguments,
         "multiplicity_arg": multiplicity_arg,
         "multiplicity_sub_args": multiplicity_sub_args,
+        "requires_shared_helpers": bool(helper_imports),
+        "helper_imports": sorted(helper_imports),
     }
 
     for tmpl_path in sorted(blueprint_dir.iterdir()):
