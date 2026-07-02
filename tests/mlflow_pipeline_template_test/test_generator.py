@@ -1,7 +1,19 @@
 import pytest
 """Tests for mlflow_pipeline_template generator with W&B tracking and 4 steps."""
+import py_compile
 
 from mlflow_pipeline_template.generator import generate_project
+
+
+def _assert_generated_python_compiles(project_path):
+    """Compile every generated Python file to catch template indentation/syntax regressions."""
+    py_files = sorted(project_path.rglob("*.py"))
+    assert py_files, "Expected generated Python files"
+    assert project_path / "main.py" in py_files, "Expected generated root main.py to be compiled"
+    run_py_files = [py_file for py_file in py_files if py_file.name == "run.py"]
+    assert run_py_files, "Expected generated step/component run.py files to be compiled"
+    for py_file in py_files:
+        py_compile.compile(str(py_file), doraise=True)
 
 
 def test_generates_all_step_folders(project_dir):
@@ -16,6 +28,109 @@ def test_generates_all_step_folders(project_dir):
         assert step_dir.exists(), f"Missing step folder: src/{step}"
         assert (step_dir / "run.py").exists(), f"Missing run.py in src/{step}"
         assert (step_dir / "MLproject").exists(), f"Missing MLproject in src/{step}"
+
+
+def test_generated_python_files_compile_for_steps_and_components(tmp_path):
+    """Generated root, shared, step, and component .py files should always be syntactically valid."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """project_name: compile_test
+tracking_backend: mlflow
+artifact_backend: dvc
+""",
+        encoding="utf-8",
+    )
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """steps:
+  download:
+    description: "Download data"
+    arguments:
+      source_url:
+        type: str
+        required: true
+        description: "Source URL"
+      force_download:
+        type: bool
+        default: false
+        description: "Force download"
+      threshold:
+        type: float
+        default: null
+        description: "Optional threshold"
+  batch_download:
+    description: "Download multiple sources"
+    arguments:
+      dataset_sources:
+        multiplicity: true
+        multiplicity_count: 2
+        args:
+          - out_dir:
+              type: str
+              required: true
+              description: "Output directory"
+            url:
+              type: str
+              required: true
+              description: "Dataset URL"
+components:
+  validate:
+    description: "Validate outputs"
+    arguments:
+      input_artifact:
+        type: str
+        required: true
+        description: "Input artifact"
+      max_missing:
+        type: float
+        default: 0.1
+        description: "Max missing fraction"
+""",
+        encoding="utf-8",
+    )
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    _assert_generated_python_compiles(tmp_path)
+
+
+def test_generated_python_files_compile_for_wandb_components(tmp_path):
+    """W&B component templates should also render compilable Python."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """project_name: wandb_component_compile_test
+tracking_backend: wandb
+artifact_backend: dvc
+wandb_entity: myteam
+wandb_project: wandb_component_compile_test
+""",
+        encoding="utf-8",
+    )
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """steps:
+  prepare:
+    description: "Prepare data"
+    arguments:
+      input_path:
+        type: str
+        required: true
+        description: "Input path"
+components:
+  reusable_component:
+    description: "Reusable W&B component"
+    arguments:
+      output_artifact:
+        type: str
+        default: output
+        description: "Output artifact"
+""",
+        encoding="utf-8",
+    )
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    _assert_generated_python_compiles(tmp_path)
 
 
 def test_no_components_folder_when_empty(project_dir):

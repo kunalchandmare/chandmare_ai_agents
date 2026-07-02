@@ -13,6 +13,16 @@ _TEMPLATE_DIR = _PACKAGE_DIR / "template"
 _BLUEPRINTS_DIR = _PACKAGE_DIR / "template" / "_blueprints"
 
 
+def _write_generated_file(path: Path, content: str) -> None:
+    """Write a generated file and fail fast if generated Python is not compilable."""
+    path.write_text(content, encoding="utf-8")
+    if path.suffix == ".py":
+        try:
+            compile(content, str(path), "exec")
+        except SyntaxError as exc:
+            raise ValueError(f"Generated Python file is not compilable: {path}") from exc
+
+
 def generate_project(config_path: Path, pipeline_path: Path, output_path: Path) -> None:
     """Generate a full MLflow pipeline project."""
     config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
@@ -33,7 +43,7 @@ def generate_project(config_path: Path, pipeline_path: Path, output_path: Path) 
     shared_dir.mkdir(parents=True, exist_ok=True)
     init_file = shared_dir / "__init__.py"
     if not init_file.exists():
-        init_file.write_text('"""Shared utilities for pipeline steps."""\n', encoding="utf-8")
+        _write_generated_file(init_file, '"""Shared utilities for pipeline steps."""\n')
     _ensure_shared_helpers(shared_dir)
 
     # 1. Render root template files (main.py, MLproject)
@@ -151,7 +161,7 @@ def _render_root_templates(config: dict, pipeline: dict, output_path: Path) -> N
         if tmpl_file.is_file() and tmpl_file.suffix == ".jinja":
             out_name = tmpl_file.stem  # strip .jinja
             rendered = env.get_template(tmpl_file.name).render(ctx)
-            (output_path / out_name).write_text(rendered, encoding="utf-8")
+            _write_generated_file(output_path / out_name, rendered)
 
 
 def _with_argument_metadata(arg_cfg: dict) -> dict:
@@ -173,7 +183,8 @@ def _ensure_shared_helpers(shared_dir: Path) -> None:
     if helpers_path.exists():
         return
 
-    helpers_path.write_text(
+    _write_generated_file(
+        helpers_path,
         """\
 import argparse
 
@@ -232,7 +243,6 @@ def parse_optional_bool(value):
         return None
     return parse_bool(text)
 """,
-        encoding="utf-8",
     )
 
 
@@ -320,7 +330,7 @@ def _generate_step_or_component(
 
         out_name = tmpl_path.stem  # strip .jinja
         rendered = env.get_template(tmpl_path.name).render(ctx)
-        (output_dir / out_name).write_text(rendered, encoding="utf-8")
+        _write_generated_file(output_dir / out_name, rendered)
 
 
 def _generate_params_yaml(pipeline: dict, output_path: Path, config: dict) -> None:
