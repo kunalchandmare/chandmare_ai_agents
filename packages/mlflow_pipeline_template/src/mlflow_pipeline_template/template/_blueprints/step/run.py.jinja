@@ -9,24 +9,23 @@ import argparse
 import logging
 import subprocess
 import sys
-{% if requires_shared_helpers %}
 from pathlib import Path
-{% endif %}
 {% if tracking_backend == 'wandb' %}
 import wandb
 {% endif %}
 import mlflow
 
-{% if requires_shared_helpers %}
 def _bootstrap_project_root() -> None:
-    project_root = Path(__file__).resolve().parents[2]
-    project_root_str = str(project_root)
+    project_root_str = str(PROJECT_ROOT)
     if project_root_str not in sys.path:
         sys.path.insert(0, project_root_str)
 
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _bootstrap_project_root()
 
+from shared.mlflow_utils import configure_project_mlflow
+{% if requires_shared_helpers %}
 from shared.helpers import {{ helper_imports | join(', ') }}
 {% endif %}
 
@@ -35,6 +34,7 @@ logger = logging.getLogger()
 
 def go(args):
     # No multiplicity handling; all arguments are single set
+    configure_project_mlflow(PROJECT_ROOT)
 
 
 {% if tracking_backend == 'wandb' %}

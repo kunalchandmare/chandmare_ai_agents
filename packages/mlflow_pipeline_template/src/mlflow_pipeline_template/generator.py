@@ -45,6 +45,7 @@ def generate_project(config_path: Path, pipeline_path: Path, output_path: Path) 
     if not init_file.exists():
         _write_generated_file(init_file, '"""Shared utilities for pipeline steps."""\n')
     _ensure_shared_helpers(shared_dir)
+    _ensure_shared_mlflow_utils(shared_dir)
 
     # 1. Render root template files (main.py, MLproject)
     _render_root_templates(config, pipeline, output_path)
@@ -183,67 +184,26 @@ def _ensure_shared_helpers(shared_dir: Path) -> None:
     if helpers_path.exists():
         return
 
-    _write_generated_file(
-        helpers_path,
-        """\
-import argparse
-
-NULL_TOKENS = {"", "null", "none"}
-
-
-def parse_bool(value):
-    if isinstance(value, bool):
-        return value
-    normalized = str(value).strip().lower()
-    if normalized in {"true", "1", "yes", "y"}:
-        return True
-    if normalized in {"false", "0", "no", "n"}:
-        return False
-    raise argparse.ArgumentTypeError(f"Expected a boolean value, got: {value!r}")
-
-
-def parse_optional_str(value):
-    if value is None:
-        return None
-    text = str(value)
-    if text.strip().lower() in NULL_TOKENS:
-        return None
-    return text
-
-
-def parse_optional_int(value):
-    if value is None:
-        return None
-    text = str(value).strip()
-    if text.lower() in NULL_TOKENS:
-        return None
-    try:
-        return int(text)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"Expected an integer value, got: {value!r}") from exc
-
-
-def parse_optional_float(value):
-    if value is None:
-        return None
-    text = str(value).strip()
-    if text.lower() in NULL_TOKENS:
-        return None
-    try:
-        return float(text)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"Expected a float value, got: {value!r}") from exc
-
-
-def parse_optional_bool(value):
-    if value is None:
-        return None
-    text = str(value).strip().lower()
-    if text in NULL_TOKENS:
-        return None
-    return parse_bool(text)
-""",
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
+        keep_trailing_newline=True,
     )
+    rendered = env.get_template("shared/helpers.py.jinja").render()
+    _write_generated_file(helpers_path, rendered)
+
+
+def _ensure_shared_mlflow_utils(shared_dir: Path) -> None:
+    """Create shared/mlflow_utils.py with MLflow configuration utilities."""
+    mlflow_utils_path = shared_dir / "mlflow_utils.py"
+    if mlflow_utils_path.exists():
+        return
+
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATE_DIR)),
+        keep_trailing_newline=True,
+    )
+    rendered = env.get_template("shared/mlflow_utils.py.jinja").render()
+    _write_generated_file(mlflow_utils_path, rendered)
 
 
 def _generate_step_or_component(

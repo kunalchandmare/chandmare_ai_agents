@@ -9,6 +9,7 @@ Driven by Hydra config (params.yaml). Run with:
 import os
 import sys
 import uuid
+from pathlib import Path
 import mlflow
 import hydra
 from omegaconf import DictConfig
@@ -19,6 +20,13 @@ import wandb
 
 def _serialize_param(value):
     return "" if value is None else str(value)
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from shared.mlflow_utils import configure_project_mlflow
 
 
 _steps = [
@@ -34,6 +42,8 @@ _steps = [
 def go(config: DictConfig):
     main_cfg = config.get("main", {})
     experiment_name = str(main_cfg.get("experiment_name", "dev"))
+    os.environ["MLFLOW_EXPERIMENT_NAME"] = experiment_name
+    configure_project_mlflow(PROJECT_ROOT)
     pipeline_group_id = f"{experiment_name}-{uuid.uuid4().hex[-4:]}"
 {%- if tracking_backend == 'wandb' %}
     os.environ["WANDB_PROJECT"] = str(main_cfg.get("project_name", ""))

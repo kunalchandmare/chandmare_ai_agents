@@ -171,6 +171,9 @@ artifact_backend: dvc
 
     main_py = (project_dir / "main.py").read_text(encoding="utf-8")
     assert "import uuid" in main_py
+    assert "PROJECT_ROOT = Path(__file__).resolve().parent" in main_py
+    assert "from shared.mlflow_utils import configure_project_mlflow" in main_py
+    assert "configure_project_mlflow(PROJECT_ROOT)" in main_py
     assert 'experiment_name = str(main_cfg.get("experiment_name", "dev"))' in main_py
     assert 'pipeline_group_id = f"{experiment_name}-{uuid.uuid4().hex[-4:]}"' in main_py
     assert '"run_name": _serialize_param(pipeline_group_id)' in main_py
@@ -181,6 +184,9 @@ artifact_backend: dvc
     assert "--run_name {run_name}" in step_mlproject
 
     step_run_py = (project_dir / "src" / "download" / "run.py").read_text(encoding="utf-8")
+    assert "PROJECT_ROOT = Path(__file__).resolve().parents[2]" in step_run_py
+    assert "from shared.mlflow_utils import configure_project_mlflow" in step_run_py
+    assert "configure_project_mlflow(PROJECT_ROOT)" in step_run_py
     assert '"--run_name", type=str,' in step_run_py
     assert "mlflow.start_run(run_name=args.run_name or None)" in step_run_py
     assert 'mlflow.set_tag("pipeline_group_id", args.run_name or "")' in step_run_py
@@ -221,6 +227,9 @@ components:
     assert "--run_name {run_name}" in component_mlproject
 
     component_run_py = (tmp_path / "components" / "validate" / "run.py").read_text(encoding="utf-8")
+    assert "PROJECT_ROOT = Path(__file__).resolve().parents[2]" in component_run_py
+    assert "from shared.mlflow_utils import configure_project_mlflow" in component_run_py
+    assert "configure_project_mlflow(PROJECT_ROOT)" in component_run_py
     assert '"--run_name", type=str,' in component_run_py
     assert "mlflow.start_run(run_name=args.run_name or None)" in component_run_py
     assert 'mlflow.set_tag("pipeline_group_id", args.run_name or "")' in component_run_py
@@ -409,6 +418,10 @@ def test_shared_utils_folder_created(project_dir):
     assert shared.exists()
     assert (shared / "__init__.py").exists()
     assert (shared / "helpers.py").exists()
+    assert (shared / "mlflow_utils.py").exists()
+    mlflow_utils = (shared / "mlflow_utils.py").read_text(encoding="utf-8")
+    assert "def configure_project_mlflow(" in mlflow_utils
+    assert "def start_run_with_fallback(" in mlflow_utils
 
 
 def test_optional_argument_has_default_in_mlproject(project_dir):
@@ -859,7 +872,13 @@ class utils:
         encoding="utf-8",
     )
     (tmp_path / "mlflow.py").write_text(
-        """def run(uri, entry_point, env_manager=None, parameters=None):
+        """def set_tracking_uri(uri):
+    print(f"MLFLOW_TRACKING_URI:{uri}")
+
+def set_experiment(name):
+    print(f"MLFLOW_EXPERIMENT:{name}")
+
+def run(uri, entry_point, env_manager=None, parameters=None):
     print(f"MLFLOW_PARAMS:{parameters}")
     return None
 """,
@@ -936,7 +955,13 @@ class utils:
         encoding="utf-8",
     )
     (tmp_path / "mlflow.py").write_text(
-        """def run(uri, entry_point, env_manager=None, parameters=None):
+        """def set_tracking_uri(uri):
+    print(f"MLFLOW_TRACKING_URI:{uri}")
+
+def set_experiment(name):
+    print(f"MLFLOW_EXPERIMENT:{name}")
+
+def run(uri, entry_point, env_manager=None, parameters=None):
     print(f"MLFLOW_PARAMS:{parameters}")
     return None
 """,
@@ -1065,7 +1090,13 @@ class utils:
         encoding="utf-8",
     )
     (tmp_path / "mlflow.py").write_text(
-        """def run(uri, entry_point, env_manager=None, parameters=None):
+        """def set_tracking_uri(uri):
+    print(f"MLFLOW_TRACKING_URI:{uri}")
+
+def set_experiment(name):
+    print(f"MLFLOW_EXPERIMENT:{name}")
+
+def run(uri, entry_point, env_manager=None, parameters=None):
     print(f"MLFLOW_PARAMS:{parameters}")
     return None
 """,
