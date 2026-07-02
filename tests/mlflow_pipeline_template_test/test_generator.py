@@ -39,6 +39,78 @@ def test_root_main_py_generated(project_dir):
     assert (project_dir / "main.py").exists()
 
 
+def test_pipeline_group_id_propagates_as_internal_run_name(project_dir):
+    """main.py should generate run_name internally and generated step files should accept it without pipeline.yaml."""
+    (project_dir / "config.yaml").write_text(
+        """project_name: image_classifier
+tracking_backend: mlflow
+artifact_backend: dvc
+""",
+        encoding="utf-8",
+    )
+    generate_project(
+        project_dir / "config.yaml",
+        project_dir / "pipeline.yaml",
+        project_dir,
+    )
+
+    main_py = (project_dir / "main.py").read_text(encoding="utf-8")
+    assert "import uuid" in main_py
+    assert 'experiment_name = str(main_cfg.get("experiment_name", "dev"))' in main_py
+    assert 'pipeline_group_id = f"{experiment_name}-{uuid.uuid4().hex[-4:]}"' in main_py
+    assert '"run_name": _serialize_param(pipeline_group_id)' in main_py
+    assert "run_name=pipeline_group_id" not in main_py
+
+    step_mlproject = (project_dir / "src" / "download" / "MLproject").read_text(encoding="utf-8")
+    assert "run_name:" in step_mlproject
+    assert "--run_name {run_name}" in step_mlproject
+
+    step_run_py = (project_dir / "src" / "download" / "run.py").read_text(encoding="utf-8")
+    assert '"--run_name", type=str,' in step_run_py
+    assert "mlflow.start_run(run_name=args.run_name or None)" in step_run_py
+    assert 'mlflow.set_tag("pipeline_group_id", args.run_name or "")' in step_run_py
+
+
+def test_component_accepts_internal_run_name_without_pipeline_argument(tmp_path):
+    """Generated components should accept root-propagated run_name even when pipeline.yaml omits it."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """project_name: component_run_name_test
+tracking_backend: mlflow
+artifact_backend: dvc
+""",
+        encoding="utf-8",
+    )
+    pipeline_path = tmp_path / "pipeline.yaml"
+    pipeline_path.write_text(
+        """steps: {}
+components:
+  validate:
+    description: "Validate output"
+    arguments:
+      input_artifact:
+        type: str
+        required: true
+        description: "Input artifact"
+""",
+        encoding="utf-8",
+    )
+
+    generate_project(config_path, pipeline_path, tmp_path)
+
+    main_py = (tmp_path / "main.py").read_text(encoding="utf-8")
+    assert '"run_name": _serialize_param(pipeline_group_id)' in main_py
+
+    component_mlproject = (tmp_path / "components" / "validate" / "MLproject").read_text(encoding="utf-8")
+    assert "run_name:" in component_mlproject
+    assert "--run_name {run_name}" in component_mlproject
+
+    component_run_py = (tmp_path / "components" / "validate" / "run.py").read_text(encoding="utf-8")
+    assert '"--run_name", type=str,' in component_run_py
+    assert "mlflow.start_run(run_name=args.run_name or None)" in component_run_py
+    assert 'mlflow.set_tag("pipeline_group_id", args.run_name or "")' in component_run_py
+
+
 def test_root_mlproject_generated(project_dir):
     """MLproject is generated at project root."""
     generate_project(
@@ -121,7 +193,7 @@ components: {}
 
     generate_project(config_path, pipeline_path, tmp_path)
     run_py = (tmp_path / "src" / "score" / "run.py").read_text(encoding="utf-8")
-    assert 'from shared.helpers import parse_bool, parse_optional_bool, parse_optional_float, parse_optional_int, parse_optional_str' in run_py
+    assert 'from shared.helpers import parse_optional_float' in run_py
     assert '"--threshold", type=parse_optional_float,' in run_py
     assert 'default=None,' in run_py
 
@@ -778,6 +850,7 @@ class utils:
 def test_dataset_sources_bool_argument_is_value_based_end_to_end(tmp_path):
     """Multiplicity bool args should be forwarded as explicit True/False values, including default False when omitted."""
     from mlflow_pipeline_template.generator import generate_project
+    import ast
     import subprocess
     import sys
 
@@ -902,5 +975,10 @@ class utils:
     assert len(lines) == 2
     assert "'force_download': 'False'" in lines[0]
     assert "'force_download': 'True'" in lines[1]
+    first_params = ast.literal_eval(lines[0].removeprefix("MLFLOW_PARAMS:"))
+    second_params = ast.literal_eval(lines[1].removeprefix("MLFLOW_PARAMS:"))
+    assert first_params["run_name"] == second_params["run_name"]
+    assert first_params["run_name"].startswith("dev-")
+    assert len(first_params["run_name"].rsplit("-", 1)[-1]) == 4
 
 

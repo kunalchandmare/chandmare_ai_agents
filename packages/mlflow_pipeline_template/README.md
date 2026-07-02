@@ -8,6 +8,7 @@ Generates a fully structured MLflow + Hydra pipeline project from two user-provi
 
 ```bash
 pip install -e /path/to/packages/mlflow_pipeline_template
+pip uninstall chandmare-mlflow-pipeline-template  # uninstall any previous version
 ```
 
 ---

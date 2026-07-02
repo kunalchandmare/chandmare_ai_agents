@@ -4,6 +4,10 @@ conda_env: conda.yaml
 entry_points:
   main:
     parameters:
+      run_name:
+        description: "Pipeline group id propagated from the root orchestrator"
+        type: string
+        default: ""
 {% for arg_name, arg_cfg in arguments.items() %}
 {% if arg_cfg.get('multiplicity', False) %}
 {% set sub_args = arg_cfg.get('args', []) %}
@@ -27,4 +31,4 @@ entry_points:
 {% endif %}
 {% endfor %}
     command: >-
-      python run.py{% for arg_name, arg_cfg in arguments.items() %}{% if arg_cfg.get('multiplicity', False) %}{% set sub_args = arg_cfg.get('args', []) %}{% for sub_arg in sub_args %}{% for sub_name, sub_cfg in sub_arg.items() %} --{{ sub_name }} {{'{'}}{{ sub_name }}{{'}'}}{% endfor %}{% endfor %}{% else %} --{{ arg_name }} {{'{'}}{{ arg_name }}{{'}'}}{% endif %}{% endfor %}
+      python run.py --run_name {run_name}{% for arg_name, arg_cfg in arguments.items() %}{% if arg_cfg.get('multiplicity', False) %}{% set sub_args = arg_cfg.get('args', []) %}{% for sub_arg in sub_args %}{% for sub_name, sub_cfg in sub_arg.items() %} --{{ sub_name }} {{'{'}}{{ sub_name }}{{'}'}}{% endfor %}{% endfor %}{% else %} --{{ arg_name }} {{'{'}}{{ arg_name }}{{'}'}}{% endif %}{% endfor %}

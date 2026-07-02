@@ -56,8 +56,9 @@ def go(args):
 
     run.finish()
 {% else %}
-    with mlflow.start_run():
+    with mlflow.start_run(run_name=args.run_name or None):
         mlflow.set_tag("step_name", "{{ step_name }}")
+        mlflow.set_tag("pipeline_group_id", args.run_name or "")
         # --- Pull input artifact (DVC) ---
         # input_artifact_path = "<input_path>"
         # subprocess.run(["dvc", "pull", "<input_path>.dvc"], check=True)
@@ -83,6 +84,12 @@ def go(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Step: {{ step_name }}")
+    parser.add_argument(
+        "--run_name", type=str,
+        required=False,
+        default="",
+        help="Pipeline group id propagated from the root orchestrator"
+    )
 {% for arg_name, arg_cfg in arguments.items() -%}
     {% set arg_type = arg_cfg.get('type', 'str') %}
     {% if arg_type == 'bool' %}
