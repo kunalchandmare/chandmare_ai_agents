@@ -1,7 +1,15 @@
 import argparse
+import sys
+from pathlib import Path
 
 NULL_TOKENS = {"", "null", "none"}
 
+def _resolve_project_path(*parts):
+    """Resolve a project-relative path from PROJECT_ROOT."""
+    path = Path(*parts)
+    if path.is_absolute():
+        return path
+    return path.resolve()
 
 def parse_bool(value):
     if isinstance(value, bool):
