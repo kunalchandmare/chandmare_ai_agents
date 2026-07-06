@@ -57,7 +57,7 @@ def go(args):
     run.finish()
 {% else %}
     with mlflow.start_run(run_name=args.run_name or None):
-        mlflow.set_tag("step_name", "{{ step_name }}")
+        mlflow.set_tag("component_name", "{{ step_name }}")
         mlflow.set_tag("pipeline_group_id", args.run_name or "")
         # --- Pull input artifact (DVC) ---
         # input_artifact_path = "<input_path>"
